@@ -383,7 +383,7 @@ export default function FinanzasApp() {
                 }`}
               >
                 <Icon className="h-5 w-5 flex-shrink-0" />
-                {(sidebarOpen || window.innerWidth >= 1024) && (
+                {(sidebarOpen || !isMobile) && (
                   <span className="ml-3">{item.label}</span>
                 )}
               </button>
