@@ -7,6 +7,7 @@ export default function FinanzasApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Empezar cerrado en mobile
   const [activeSection, setActiveSection] = useState('dashboard');
   const [selectedMonth, setSelectedMonth] = useState('2024-03');
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
 
   // Datos de ejemplo
   const mockData = {
@@ -352,7 +353,7 @@ export default function FinanzasApp() {
       } bg-white shadow-lg transition-all duration-300 flex flex-col fixed lg:relative h-full z-30`}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          {(sidebarOpen || window.innerWidth >= 1024) && (
+          {(sidebarOpen || !isMobile) && (
             <h1 className="text-xl font-bold text-gray-800">Finanzas Hogar</h1>
           )}
           <button
@@ -372,7 +373,7 @@ export default function FinanzasApp() {
                 key={item.id}
                 onClick={() => {
                   setActiveSection(item.id);
-                  if (window.innerWidth < 1024) {
+                  if (isMobile) {
                     setSidebarOpen(false);
                   }
                 }}
