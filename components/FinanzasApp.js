@@ -49,10 +49,46 @@ export default function FinanzasApp() {
       },
     ],
     gastos: [
-      { id: 1, fecha: '2024-03-05', concepto: 'Supermercado', categoria: 'Alimentación', monto: 85000, usuario: 'María' },
-      { id: 2, fecha: '2024-03-10', concepto: 'Nafta', categoria: 'Transporte', monto: 45000, usuario: 'Juan' },
-      { id: 3, fecha: '2024-03-12', concepto: 'Internet', categoria: 'Servicios', monto: 25000, usuario: 'María' },
-      { id: 4, fecha: '2024-03-15', concepto: 'Ropa', categoria: 'Vestimenta', monto: 120000, usuario: 'María' }
+      {
+        id: 1,
+        fecha: '2024-03-05',
+        concepto: 'Supermercado',
+        usuario: 'María',
+        tipoMovimiento: 'Alimentación',
+        tipoDeCambio: '',
+        montoARS: 85000,
+        montoUSD: null,
+      },
+      {
+        id: 2,
+        fecha: '2024-03-10',
+        concepto: 'Nafta',
+        usuario: 'Juan',
+        tipoMovimiento: 'Transporte',
+        tipoDeCambio: '',
+        montoARS: 45000,
+        montoUSD: null,
+      },
+      {
+        id: 3,
+        fecha: '2024-03-12',
+        concepto: 'Internet',
+        usuario: 'María',
+        tipoMovimiento: 'Servicios',
+        tipoDeCambio: '',
+        montoARS: 25000,
+        montoUSD: null,
+      },
+      {
+        id: 4,
+        fecha: '2024-03-15',
+        concepto: 'Suscripción streaming',
+        usuario: 'María',
+        tipoMovimiento: 'Entretenimiento',
+        tipoDeCambio: '850',
+        montoARS: 0,
+        montoUSD: 12,
+      },
     ],
     inversiones: [
       { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.50, cambio: 2.15, cambioPorc: 0.75 },
@@ -60,6 +96,65 @@ export default function FinanzasApp() {
       { simbolo: 'ALUA', nombre: 'Aluar', precio: 89.25, cambio: 1.25, cambioPorc: 1.42 },
       { simbolo: 'BTC', nombre: 'Bitcoin USD', precio: 67850.00, cambio: 1250.00, cambioPorc: 1.88 }
     ]
+  };
+
+  const getNumericValue = (value) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+
+      if (trimmed === '') {
+        return null;
+      }
+
+      const normalized = trimmed.replace(/\s/g, '').replace(/,/g, '.');
+      const dotMatches = normalized.match(/\./g) ?? [];
+
+      if (dotMatches.length > 1) {
+        const lastDotIndex = normalized.lastIndexOf('.');
+        const withoutThousands =
+          normalized.slice(0, lastDotIndex).replace(/\./g, '') + normalized.slice(lastDotIndex);
+        const parsed = Number.parseFloat(withoutThousands);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+
+      const parsed = Number.parseFloat(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  };
+
+  const getExchangeRateValue = (value) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const direct = getNumericValue(value);
+
+    if (direct !== null) {
+      return direct;
+    }
+
+    if (typeof value === 'string') {
+      const match = value.replace(',', '.').match(/[0-9.]+/);
+
+      if (!match) {
+        return null;
+      }
+
+      const parsed = Number.parseFloat(match[0]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
   };
 
   const menuItems = [
@@ -72,7 +167,26 @@ export default function FinanzasApp() {
   ];
 
   const totalIngresos = mockData.ingresos.reduce((sum, item) => sum + (item.montoARS ?? 0), 0);
-  const totalGastos = mockData.gastos.reduce((sum, item) => sum + item.monto, 0);
+  const totalGastos = mockData.gastos.reduce((sum, item) => {
+    const montoARS = getNumericValue(item.montoARS);
+    const montoUSD = getNumericValue(item.montoUSD);
+
+    let subtotal = 0;
+
+    if (montoARS !== null) {
+      subtotal += montoARS;
+    }
+
+    if (montoUSD !== null) {
+      const exchangeRate = getExchangeRateValue(item.tipoDeCambio);
+
+      if (exchangeRate !== null) {
+        subtotal += montoUSD * exchangeRate;
+      }
+    }
+
+    return sum + subtotal;
+  }, 0);
   const metaAhorro = 0.20;
   const ahorroActual = totalIngresos - totalGastos;
   const ahorroObjetivo = totalIngresos * metaAhorro;
@@ -100,7 +214,7 @@ export default function FinanzasApp() {
         />
       ),
       ingresos: <Ingresos />,
-      gastos: <Gastos gastos={mockData.gastos} formatMoney={formatMoney} />,
+      gastos: <Gastos />, 
       inversiones: <Inversiones inversiones={mockData.inversiones} formatMoney={formatMoney} />,
       usuarios: (
         <div className="text-center py-12">
