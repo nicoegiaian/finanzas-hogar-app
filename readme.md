@@ -62,6 +62,8 @@ También asegurate de crear en Supabase una tabla llamada `ingresos` con las col
 | `monto_ars`      | numeric       | Importe en pesos argentinos          |
 | `monto_usd`      | numeric       | Importe en dólares (opcional)        |
 
+Para la sección de gastos, creá una tabla `gastos` con la misma estructura de columnas (incluyendo `tipo_movimiento`, `tipo_de_cambio`, `monto_ars` y `monto_usd`) para que la aplicación pueda listar y registrar egresos.
+
 La aplicación utiliza el API REST de Supabase, por lo que los permisos de la política de seguridad (RLS) deben permitir leer e insertar registros con la clave anónima.
 
 ## 🚀 Deploy en Vercel
