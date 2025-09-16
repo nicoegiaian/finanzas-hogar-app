@@ -60,47 +60,36 @@ export default function FinanzasApp() {
   };
 
   const renderContent = () => {
-    switch (activeSection) {
-      case 'dashboard':
-        return (
-          <Dashboard
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            totalIngresos={totalIngresos}
-            totalGastos={totalGastos}
-            ahorroActual={ahorroActual}
-            ahorroObjetivo={ahorroObjetivo}
-            formatMoney={formatMoney}
-          />
-        );
-      case 'ingresos': return <Ingresos ingresos={mockData.ingresos} formatMoney={formatMoney} />;
-      case 'gastos': return <Gastos gastos={mockData.gastos} formatMoney={formatMoney} />;
-      case 'inversiones': return <Inversiones inversiones={mockData.inversiones} formatMoney={formatMoney} />;
-      case 'usuarios': return (
+    const sectionComponents = {
+      dashboard: (
+        <Dashboard
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
+          totalIngresos={totalIngresos}
+          totalGastos={totalGastos}
+          ahorroActual={ahorroActual}
+          ahorroObjetivo={ahorroObjetivo}
+          formatMoney={formatMoney}
+        />
+      ),
+      ingresos: <Ingresos ingresos={mockData.ingresos} formatMoney={formatMoney} />,
+      gastos: <Gastos gastos={mockData.gastos} formatMoney={formatMoney} />,
+      inversiones: <Inversiones inversiones={mockData.inversiones} formatMoney={formatMoney} />,
+      usuarios: (
         <div className="text-center py-12">
           <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">Módulo de Familia - En desarrollo</p>
         </div>
-      );
-      case 'configuracion': return (
+      ),
+      configuracion: (
         <div className="text-center py-12">
           <Settings className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">Configuración - En desarrollo</p>
         </div>
-      );
-      default:
-        return (
-          <Dashboard
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            totalIngresos={totalIngresos}
-            totalGastos={totalGastos}
-            ahorroActual={ahorroActual}
-            ahorroObjetivo={ahorroObjetivo}
-            formatMoney={formatMoney}
-          />
-        );
-    }
+      ),
+    };
+
+    return sectionComponents[activeSection] ?? sectionComponents.dashboard;
   };
 
   return (
