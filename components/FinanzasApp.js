@@ -17,9 +17,36 @@ export default function FinanzasApp() {
   // Datos de ejemplo
   const mockData = {
     ingresos: [
-      { id: 1, fecha: '2024-03-01', concepto: 'Sueldo Juan', categoria: 'Salario', monto: 850000, usuario: 'Juan' },
-      { id: 2, fecha: '2024-03-01', concepto: 'Sueldo María', categoria: 'Salario', monto: 720000, usuario: 'María' },
-      { id: 3, fecha: '2024-03-15', concepto: 'Freelance', categoria: 'Extra', monto: 150000, usuario: 'Juan' }
+      {
+        id: 1,
+        fecha: '2024-03-01',
+        concepto: 'Sueldo Juan',
+        usuario: 'Juan',
+        tipoMovimiento: 'Salario',
+        tipoDeCambio: 'Oficial',
+        montoARS: 850000,
+        montoUSD: 0,
+      },
+      {
+        id: 2,
+        fecha: '2024-03-01',
+        concepto: 'Sueldo María',
+        usuario: 'María',
+        tipoMovimiento: 'Salario',
+        tipoDeCambio: 'Oficial',
+        montoARS: 720000,
+        montoUSD: 0,
+      },
+      {
+        id: 3,
+        fecha: '2024-03-15',
+        concepto: 'Freelance',
+        usuario: 'Juan',
+        tipoMovimiento: 'Extra',
+        tipoDeCambio: 'MEP',
+        montoARS: 150000,
+        montoUSD: 500,
+      },
     ],
     gastos: [
       { id: 1, fecha: '2024-03-05', concepto: 'Supermercado', categoria: 'Alimentación', monto: 85000, usuario: 'María' },
@@ -44,7 +71,7 @@ export default function FinanzasApp() {
     { id: 'configuracion', icon: Settings, label: 'Configuración' }
   ];
 
-  const totalIngresos = mockData.ingresos.reduce((sum, item) => sum + item.monto, 0);
+  const totalIngresos = mockData.ingresos.reduce((sum, item) => sum + (item.montoARS ?? 0), 0);
   const totalGastos = mockData.gastos.reduce((sum, item) => sum + item.monto, 0);
   const metaAhorro = 0.20;
   const ahorroActual = totalIngresos - totalGastos;
@@ -72,7 +99,7 @@ export default function FinanzasApp() {
           formatMoney={formatMoney}
         />
       ),
-      ingresos: <Ingresos ingresos={mockData.ingresos} formatMoney={formatMoney} />,
+      ingresos: <Ingresos />,
       gastos: <Gastos gastos={mockData.gastos} formatMoney={formatMoney} />,
       inversiones: <Inversiones inversiones={mockData.inversiones} formatMoney={formatMoney} />,
       usuarios: (
