@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react';
 
-import { createIngreso, fetchIngresos } from '../../lib/supabaseClient';
+import { createIngreso, fetchIngresos, updateIngreso } from '../../lib/supabaseClient';
 import {
   formatPeriodLabel,
   getCurrentPeriod,
@@ -17,6 +17,12 @@ const createInitialFormState = () => ({
   usuario: '',
   tipoMovimiento: '',
   tipoDeCambio: '',
+  montoARS: '',
+  montoUSD: '',
+});
+
+const createInitialEditingState = () => ({
+  fecha: '',
   montoARS: '',
   montoUSD: '',
 });
@@ -89,6 +95,11 @@ const formatDate = (value) => {
   });
 };
 
+const formatDateForInput = (value) => {
+  const date = parseDateValue(value);
+  return date ? date.toISOString().split('T')[0] : '';
+};
+
 const buildFallbackId = (record) => {
   const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
 
@@ -100,17 +111,35 @@ const buildFallbackId = (record) => {
   return `${base}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const normalizeIngreso = (record) => ({
-  id: record.id ?? record.uuid ?? buildFallbackId(record),
-  fecha: record.fecha ?? '',
-  concepto: record.concepto ?? '',
-  usuario: record.usuario ?? '',
-  tipoMovimiento: record.tipoMovimiento ?? record.tipo_movimiento ?? '',
-  tipoDeCambio:
-    record.tipoDeCambio ?? record.tipo_de_cambio ?? record.tipo_cambio ?? record.tipoCambio ?? '',
-  montoARS: record.montoARS ?? record.monto_ars ?? null,
-  montoUSD: record.montoUSD ?? record.monto_usd ?? null,
-});
+const resolveRecordIdentifier = (record) => {
+  if (record && record.id !== null && record.id !== undefined) {
+    return { field: 'id', value: record.id };
+  }
+
+  if (record && record.uuid !== null && record.uuid !== undefined) {
+    return { field: 'uuid', value: record.uuid };
+  }
+
+  return { field: null, value: null };
+};
+
+const normalizeIngreso = (record) => {
+  const { field, value } = resolveRecordIdentifier(record);
+
+  return {
+    id: record.id ?? record.uuid ?? buildFallbackId(record),
+    databaseId: value,
+    databaseIdField: field,
+    fecha: record.fecha ?? '',
+    concepto: record.concepto ?? '',
+    usuario: record.usuario ?? '',
+    tipoMovimiento: record.tipoMovimiento ?? record.tipo_movimiento ?? '',
+    tipoDeCambio:
+      record.tipoDeCambio ?? record.tipo_de_cambio ?? record.tipo_cambio ?? record.tipoCambio ?? '',
+    montoARS: record.montoARS ?? record.monto_ars ?? null,
+    montoUSD: record.montoUSD ?? record.monto_usd ?? null,
+  };
+};
 
 const sortByFechaDesc = (items) =>
   [...items].sort((a, b) => {
@@ -191,6 +220,9 @@ const Ingresos = ({ onDataChanged }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentPeriod());
   const [isCopying, setIsCopying] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [editingIngresoId, setEditingIngresoId] = useState(null);
+  const [editingIngresoValues, setEditingIngresoValues] = useState(() => createInitialEditingState());
+  const [isUpdatingIngreso, setIsUpdatingIngreso] = useState(false);
 
   useEffect(() => {
     const loadIngresos = async () => {
@@ -379,6 +411,83 @@ const Ingresos = ({ onDataChanged }) => {
       setFormError(error.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleStartEditingIngreso = (ingreso) => {
+    if (!ingreso) {
+      return;
+    }
+
+    setEditingIngresoId(ingreso.id);
+    setEditingIngresoValues({
+      fecha: formatDateForInput(ingreso.fecha) || '',
+      montoARS: ingreso.montoARS ?? '',
+      montoUSD: ingreso.montoUSD ?? '',
+    });
+  };
+
+  const handleEditIngresoChange = (field, value) => {
+    setEditingIngresoValues((previous) => ({ ...previous, [field]: value }));
+  };
+
+  const handleCancelEditingIngreso = () => {
+    if (isUpdatingIngreso) {
+      return;
+    }
+
+    setEditingIngresoId(null);
+    setEditingIngresoValues(createInitialEditingState());
+  };
+
+  const handleSaveEditingIngreso = async () => {
+    if (!editingIngresoId) {
+      return;
+    }
+
+    if (!editingIngresoValues.fecha) {
+      setToastMessage('Seleccioná una fecha válida para el ingreso.');
+      return;
+    }
+
+    const ingresoToEdit = ingresos.find((item) => item.id === editingIngresoId);
+
+    if (!ingresoToEdit) {
+      setToastMessage('No encontramos el ingreso que querés editar.');
+      handleCancelEditingIngreso();
+      return;
+    }
+
+    setIsUpdatingIngreso(true);
+
+    try {
+      const payload = {
+        fecha: editingIngresoValues.fecha,
+        monto_ars: parseAmount(editingIngresoValues.montoARS),
+        monto_usd: parseAmount(editingIngresoValues.montoUSD),
+      };
+
+      const updatedIngreso = await updateIngreso(ingresoToEdit, payload);
+      const normalizedIngreso = normalizeIngreso(updatedIngreso);
+
+      setIngresos((previous) =>
+        sortByFechaDesc(
+          previous.map((item) => (item.id === editingIngresoId ? normalizedIngreso : item)),
+        ),
+      );
+
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
+
+      setToastMessage('Ingreso actualizado correctamente.');
+      setEditingIngresoId(null);
+      setEditingIngresoValues(createInitialEditingState());
+    } catch (error) {
+      console.error('Error al actualizar el ingreso', error);
+      setToastMessage(error?.message ?? 'No pudimos actualizar el ingreso.');
+    } finally {
+      setIsUpdatingIngreso(false);
     }
   };
 
@@ -627,13 +736,25 @@ const Ingresos = ({ onDataChanged }) => {
                   <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Monto USD
                   </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredIngresos.map((ingreso) => (
                   <tr key={ingreso.id} className="hover:bg-gray-50">
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(ingreso.fecha)}
+                      {editingIngresoId === ingreso.id ? (
+                        <input
+                          type="date"
+                          value={editingIngresoValues.fecha}
+                          onChange={(event) => handleEditIngresoChange('fecha', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        />
+                      ) : (
+                        formatDate(ingreso.fecha)
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ingreso.concepto || '—'}
@@ -648,10 +769,68 @@ const Ingresos = ({ onDataChanged }) => {
                       {ingreso.tipoDeCambio || '—'}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
-                      {formatCurrency(ingreso.montoARS, 'ARS')}
+                      {editingIngresoId === ingreso.id ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingIngresoValues.montoARS}
+                          onChange={(event) => handleEditIngresoChange('montoARS', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        />
+                      ) : (
+                        formatCurrency(ingreso.montoARS, 'ARS')
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
-                      {formatCurrency(ingreso.montoUSD, 'USD')}
+                      {editingIngresoId === ingreso.id ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingIngresoValues.montoUSD}
+                          onChange={(event) => handleEditIngresoChange('montoUSD', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="Opcional"
+                        />
+                      ) : (
+                        formatCurrency(ingreso.montoUSD, 'USD')
+                      )}
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {editingIngresoId === ingreso.id ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveEditingIngreso}
+                            disabled={isUpdatingIngreso}
+                            className="inline-flex items-center justify-center rounded-lg bg-green-500 px-3 py-1 text-white hover:bg-green-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {isUpdatingIngreso ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditingIngreso}
+                            disabled={isUpdatingIngreso}
+                            className="inline-flex items-center justify-center rounded-lg bg-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditingIngreso(ingreso)}
+                          className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
+                          title="Editar ingreso"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

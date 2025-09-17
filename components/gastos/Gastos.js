@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, ChevronDown, Pencil, Check, X } from 'lucide-react';
 
-import { createGasto, fetchGastos } from '../../lib/supabaseClient';
+import { createGasto, fetchGastos, updateGasto } from '../../lib/supabaseClient';
 import {
   formatPeriodLabel,
   getCurrentPeriod,
@@ -17,6 +17,12 @@ const createInitialFormState = () => ({
   usuario: '',
   tipoMovimiento: '',
   tipoDeCambio: '',
+  montoARS: '',
+  montoUSD: '',
+});
+
+const createInitialEditingState = () => ({
+  fecha: '',
   montoARS: '',
   montoUSD: '',
 });
@@ -93,6 +99,11 @@ const formatDate = (value) => {
   });
 };
 
+const formatDateForInput = (value) => {
+  const date = parseDateValue(value);
+  return date ? date.toISOString().split('T')[0] : '';
+};
+
 const buildFallbackId = (record) => {
   const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
 
@@ -104,17 +115,35 @@ const buildFallbackId = (record) => {
   return `${base}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const normalizeGasto = (record) => ({
-  id: record.id ?? record.uuid ?? buildFallbackId(record),
-  fecha: record.fecha ?? '',
-  concepto: record.concepto ?? '',
-  usuario: record.usuario ?? '',
-  tipoMovimiento: record.tipoMovimiento ?? record.tipo_movimiento ?? '',
-  tipoDeCambio:
-    record.tipoDeCambio ?? record.tipo_de_cambio ?? record.tipo_cambio ?? record.tipoCambio ?? '',
-  montoARS: record.montoARS ?? record.monto_ars ?? null,
-  montoUSD: record.montoUSD ?? record.monto_usd ?? null,
-});
+const resolveRecordIdentifier = (record) => {
+  if (record && record.id !== null && record.id !== undefined) {
+    return { field: 'id', value: record.id };
+  }
+
+  if (record && record.uuid !== null && record.uuid !== undefined) {
+    return { field: 'uuid', value: record.uuid };
+  }
+
+  return { field: null, value: null };
+};
+
+const normalizeGasto = (record) => {
+  const { field, value } = resolveRecordIdentifier(record);
+
+  return {
+    id: record.id ?? record.uuid ?? buildFallbackId(record),
+    databaseId: value,
+    databaseIdField: field,
+    fecha: record.fecha ?? '',
+    concepto: record.concepto ?? '',
+    usuario: record.usuario ?? '',
+    tipoMovimiento: record.tipoMovimiento ?? record.tipo_movimiento ?? '',
+    tipoDeCambio:
+      record.tipoDeCambio ?? record.tipo_de_cambio ?? record.tipo_cambio ?? record.tipoCambio ?? '',
+    montoARS: record.montoARS ?? record.monto_ars ?? null,
+    montoUSD: record.montoUSD ?? record.monto_usd ?? null,
+  };
+};
 
 const sortByFechaDesc = (items) =>
   [...items].sort((a, b) => {
@@ -265,6 +294,9 @@ const Gastos = ({ onDataChanged }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => getCurrentPeriod());
   const [isCopying, setIsCopying] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [editingGastoId, setEditingGastoId] = useState(null);
+  const [editingGastoValues, setEditingGastoValues] = useState(() => createInitialEditingState());
+  const [isUpdatingGasto, setIsUpdatingGasto] = useState(false);
 
   const visibleConceptOptions = useMemo(() => {
     const query = formData.concepto.trim().toLowerCase();
@@ -510,6 +542,81 @@ const Gastos = ({ onDataChanged }) => {
       setFormError(error.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleStartEditingGasto = (gasto) => {
+    if (!gasto) {
+      return;
+    }
+
+    setEditingGastoId(gasto.id);
+    setEditingGastoValues({
+      fecha: formatDateForInput(gasto.fecha) || '',
+      montoARS: gasto.montoARS ?? '',
+      montoUSD: gasto.montoUSD ?? '',
+    });
+  };
+
+  const handleEditGastoChange = (field, value) => {
+    setEditingGastoValues((previous) => ({ ...previous, [field]: value }));
+  };
+
+  const handleCancelEditingGasto = () => {
+    if (isUpdatingGasto) {
+      return;
+    }
+
+    setEditingGastoId(null);
+    setEditingGastoValues(createInitialEditingState());
+  };
+
+  const handleSaveEditingGasto = async () => {
+    if (!editingGastoId) {
+      return;
+    }
+
+    if (!editingGastoValues.fecha) {
+      setToastMessage('Seleccioná una fecha válida para el gasto.');
+      return;
+    }
+
+    const gastoToEdit = gastos.find((item) => item.id === editingGastoId);
+
+    if (!gastoToEdit) {
+      setToastMessage('No encontramos el gasto que querés editar.');
+      handleCancelEditingGasto();
+      return;
+    }
+
+    setIsUpdatingGasto(true);
+
+    try {
+      const payload = {
+        fecha: editingGastoValues.fecha,
+        monto_ars: parseAmount(editingGastoValues.montoARS),
+        monto_usd: parseAmount(editingGastoValues.montoUSD),
+      };
+
+      const updatedGasto = await updateGasto(gastoToEdit, payload);
+      const normalizedGasto = normalizeGasto(updatedGasto);
+
+      setGastos((previous) =>
+        sortByFechaDesc(previous.map((item) => (item.id === editingGastoId ? normalizedGasto : item))),
+      );
+
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
+
+      setToastMessage('Gasto actualizado correctamente.');
+      setEditingGastoId(null);
+      setEditingGastoValues(createInitialEditingState());
+    } catch (error) {
+      console.error('Error al actualizar el gasto', error);
+      setToastMessage(error?.message ?? 'No pudimos actualizar el gasto.');
+    } finally {
+      setIsUpdatingGasto(false);
     }
   };
 
@@ -787,13 +894,25 @@ const Gastos = ({ onDataChanged }) => {
                   <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Monto USD
                   </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredGastos.map((gasto) => (
                   <tr key={gasto.id} className="hover:bg-gray-50">
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatDate(gasto.fecha)}
+                      {editingGastoId === gasto.id ? (
+                        <input
+                          type="date"
+                          value={editingGastoValues.fecha}
+                          onChange={(event) => handleEditGastoChange('fecha', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        />
+                      ) : (
+                        formatDate(gasto.fecha)
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {gasto.concepto || '—'}
@@ -808,10 +927,68 @@ const Gastos = ({ onDataChanged }) => {
                       {gasto.tipoDeCambio ? gasto.tipoDeCambio : '—'}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
-                      {formatCurrency(gasto.montoARS, 'ARS')}
+                      {editingGastoId === gasto.id ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingGastoValues.montoARS}
+                          onChange={(event) => handleEditGastoChange('montoARS', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        />
+                      ) : (
+                        formatCurrency(gasto.montoARS, 'ARS')
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
-                      {formatCurrency(gasto.montoUSD, 'USD')}
+                      {editingGastoId === gasto.id ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingGastoValues.montoUSD}
+                          onChange={(event) => handleEditGastoChange('montoUSD', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Opcional"
+                        />
+                      ) : (
+                        formatCurrency(gasto.montoUSD, 'USD')
+                      )}
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {editingGastoId === gasto.id ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveEditingGasto}
+                            disabled={isUpdatingGasto}
+                            className="inline-flex items-center justify-center rounded-lg bg-red-500 px-3 py-1 text-white hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {isUpdatingGasto ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditingGasto}
+                            disabled={isUpdatingGasto}
+                            className="inline-flex items-center justify-center rounded-lg bg-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditingGasto(gasto)}
+                          className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
+                          title="Editar gasto"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
