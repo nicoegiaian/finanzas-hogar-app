@@ -108,7 +108,7 @@ const sortByFechaDesc = (items) =>
     return dateB - dateA;
   });
 
-const Gastos = () => {
+const Gastos = ({ onDataChanged }) => {
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -173,6 +173,9 @@ const Gastos = () => {
       const normalizedGasto = normalizeGasto(newGasto);
 
       setGastos((previous) => sortByFechaDesc([normalizedGasto, ...previous]));
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
       resetForm();
       setShowForm(false);
     } catch (error) {

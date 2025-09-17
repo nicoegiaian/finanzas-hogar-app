@@ -64,6 +64,15 @@ También asegurate de crear en Supabase una tabla llamada `ingresos` con las col
 
 Para la sección de gastos, creá una tabla `gastos` con la misma estructura de columnas (incluyendo `tipo_movimiento`, `tipo_de_cambio`, `monto_ars` y `monto_usd`) para que la aplicación pueda listar y registrar egresos.
 
+Para que el dashboard pueda mostrar el ahorro acumulado creá también una tabla `ahorros` con, al menos, las columnas:
+
+| Columna    | Tipo sugerido | Descripción                                    |
+| ---------- | ------------- | ---------------------------------------------- |
+| `periodo`  | text          | Mes correspondiente en formato `YYYY-MM`       |
+| `monto`    | numeric       | Total ahorrado en ese mes en pesos argentinos  |
+
+Cada vez que agregues un ingreso o un gasto desde la aplicación se recalculará automáticamente el ahorro del mes correspondiente y se actualizará (o creará) la fila en la tabla `ahorros`.
+
 La aplicación utiliza el API REST de Supabase, por lo que los permisos de la política de seguridad (RLS) deben permitir leer e insertar registros con la clave anónima.
 
 ## 🚀 Deploy en Vercel

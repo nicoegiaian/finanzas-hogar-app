@@ -1,160 +1,126 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Menu, X, Home, TrendingUp, DollarSign, PieChart, Users, Settings } from 'lucide-react';
 
 import Ingresos from './ingresos/Ingresos';
 import Gastos from './gastos/Gastos';
 import Dashboard from './dashboard/Dashboard';
 import Inversiones from './inversiones/Inversiones';
+import { fetchIngresos, fetchGastos, fetchAhorros } from '../lib/supabaseClient';
+import {
+  calculateMonthlyTotals,
+  sumAhorrosBeforePeriod,
+  collectPeriodsFromRecords,
+  sortPeriodsDesc,
+  getCurrentPeriod,
+  normalizePeriod,
+} from '../lib/financeUtils';
 
 export default function FinanzasApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Empezar cerrado en mobile
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [selectedMonth, setSelectedMonth] = useState('2024-03');
+  const currentPeriod = useMemo(() => getCurrentPeriod(), []);
+  const [selectedMonth, setSelectedMonth] = useState(currentPeriod);
+  const [ingresos, setIngresos] = useState([]);
+  const [gastos, setGastos] = useState([]);
+  const [ahorros, setAhorros] = useState([]);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState(null);
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
 
-  // Datos de ejemplo
-  const mockData = {
-    ingresos: [
-      {
-        id: 1,
-        fecha: '2024-03-01',
-        concepto: 'Sueldo Juan',
-        usuario: 'Juan',
-        tipoMovimiento: 'Salario',
-        tipoDeCambio: 'Oficial',
-        montoARS: 850000,
-        montoUSD: 0,
-      },
-      {
-        id: 2,
-        fecha: '2024-03-01',
-        concepto: 'Sueldo María',
-        usuario: 'María',
-        tipoMovimiento: 'Salario',
-        tipoDeCambio: 'Oficial',
-        montoARS: 720000,
-        montoUSD: 0,
-      },
-      {
-        id: 3,
-        fecha: '2024-03-15',
-        concepto: 'Freelance',
-        usuario: 'Juan',
-        tipoMovimiento: 'Extra',
-        tipoDeCambio: 'MEP',
-        montoARS: 150000,
-        montoUSD: 500,
-      },
-    ],
-    gastos: [
-      {
-        id: 1,
-        fecha: '2024-03-05',
-        concepto: 'Supermercado',
-        usuario: 'María',
-        tipoMovimiento: 'Alimentación',
-        tipoDeCambio: '',
-        montoARS: 85000,
-        montoUSD: null,
-      },
-      {
-        id: 2,
-        fecha: '2024-03-10',
-        concepto: 'Nafta',
-        usuario: 'Juan',
-        tipoMovimiento: 'Transporte',
-        tipoDeCambio: '',
-        montoARS: 45000,
-        montoUSD: null,
-      },
-      {
-        id: 3,
-        fecha: '2024-03-12',
-        concepto: 'Internet',
-        usuario: 'María',
-        tipoMovimiento: 'Servicios',
-        tipoDeCambio: '',
-        montoARS: 25000,
-        montoUSD: null,
-      },
-      {
-        id: 4,
-        fecha: '2024-03-15',
-        concepto: 'Suscripción streaming',
-        usuario: 'María',
-        tipoMovimiento: 'Entretenimiento',
-        tipoDeCambio: '850',
-        montoARS: 0,
-        montoUSD: 12,
-      },
-    ],
-    inversiones: [
-      { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.50, cambio: 2.15, cambioPorc: 0.75 },
-      { simbolo: 'YPF', nombre: 'YPF S.A.', precio: 1456.00, cambio: -23.50, cambioPorc: -1.59 },
+  const inversionesData = useMemo(
+    () => [
+      { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.5, cambio: 2.15, cambioPorc: 0.75 },
+      { simbolo: 'YPF', nombre: 'YPF S.A.', precio: 1456.0, cambio: -23.5, cambioPorc: -1.59 },
       { simbolo: 'ALUA', nombre: 'Aluar', precio: 89.25, cambio: 1.25, cambioPorc: 1.42 },
-      { simbolo: 'BTC', nombre: 'Bitcoin USD', precio: 67850.00, cambio: 1250.00, cambioPorc: 1.88 }
-    ]
-  };
+      { simbolo: 'BTC', nombre: 'Bitcoin USD', precio: 67850.0, cambio: 1250.0, cambioPorc: 1.88 },
+    ],
+    [],
+  );
 
-  const getNumericValue = (value) => {
-    if (value === null || value === undefined) {
-      return null;
+  const loadFinanceData = useCallback(async () => {
+    setFinanceLoading(true);
+    setFinanceError(null);
+
+    try {
+      const [ingresosResponse, gastosResponse, ahorrosResponse] = await Promise.all([
+        fetchIngresos(),
+        fetchGastos(),
+        fetchAhorros(),
+      ]);
+
+      setIngresos(Array.isArray(ingresosResponse) ? ingresosResponse : []);
+      setGastos(Array.isArray(gastosResponse) ? gastosResponse : []);
+      setAhorros(Array.isArray(ahorrosResponse) ? ahorrosResponse : []);
+    } catch (error) {
+      console.error('Error al obtener los datos financieros', error);
+      setFinanceError(error?.message ?? 'No pudimos cargar los datos financieros.');
+      setIngresos([]);
+      setGastos([]);
+      setAhorros([]);
+    } finally {
+      setFinanceLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFinanceData();
+  }, [loadFinanceData]);
+
+  const handleMonthChange = useCallback(
+    (value) => {
+      const normalized = normalizePeriod(value);
+      setSelectedMonth(normalized ?? currentPeriod);
+    },
+    [currentPeriod],
+  );
+
+  const monthOptions = useMemo(() => {
+    const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos, ahorros }));
+    const normalizedCurrent = normalizePeriod(currentPeriod);
+
+    if (normalizedCurrent) {
+      periodSet.add(normalizedCurrent);
     }
 
-    if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : null;
+    const normalizedSelected = normalizePeriod(selectedMonth);
+
+    if (normalizedSelected) {
+      periodSet.add(normalizedSelected);
     }
 
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
+    return sortPeriodsDesc(Array.from(periodSet));
+  }, [ingresos, gastos, ahorros, currentPeriod, selectedMonth]);
 
-      if (trimmed === '') {
-        return null;
-      }
+  const { ingresosARS, gastosARS, ahorroDelMes } = useMemo(
+    () => calculateMonthlyTotals(ingresos, gastos, selectedMonth),
+    [ingresos, gastos, selectedMonth],
+  );
 
-      const normalized = trimmed.replace(/\s/g, '').replace(/,/g, '.');
-      const dotMatches = normalized.match(/\./g) ?? [];
+  const ahorroHistorico = useMemo(
+    () => sumAhorrosBeforePeriod(ahorros, selectedMonth),
+    [ahorros, selectedMonth],
+  );
 
-      if (dotMatches.length > 1) {
-        const lastDotIndex = normalized.lastIndexOf('.');
-        const withoutThousands =
-          normalized.slice(0, lastDotIndex).replace(/\./g, '') + normalized.slice(lastDotIndex);
-        const parsed = Number.parseFloat(withoutThousands);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
+  const ahorroActual = ahorroHistorico + ahorroDelMes;
+  const metaAhorro = 0.2;
+  const ahorroObjetivo = ingresosARS * metaAhorro;
 
-      const parsed = Number.parseFloat(normalized);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
+  const refreshFinanceData = useCallback(() => {
+    loadFinanceData();
+  }, [loadFinanceData]);
 
-    return null;
-  };
+  const formatMoney = (amount) => {
+    const numericAmount = Number(amount);
+    const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
 
-  const getExchangeRateValue = (value) => {
-    if (value === null || value === undefined) {
-      return null;
-    }
-
-    const direct = getNumericValue(value);
-
-    if (direct !== null) {
-      return direct;
-    }
-
-    if (typeof value === 'string') {
-      const match = value.replace(',', '.').match(/[0-9.]+/);
-
-      if (!match) {
-        return null;
-      }
-
-      const parsed = Number.parseFloat(match[0]);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    return null;
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(safeAmount);
   };
 
   const menuItems = [
@@ -166,56 +132,29 @@ export default function FinanzasApp() {
     { id: 'configuracion', icon: Settings, label: 'Configuración' }
   ];
 
-  const totalIngresos = mockData.ingresos.reduce((sum, item) => sum + (item.montoARS ?? 0), 0);
-  const totalGastos = mockData.gastos.reduce((sum, item) => {
-    const montoARS = getNumericValue(item.montoARS);
-    const montoUSD = getNumericValue(item.montoUSD);
-
-    let subtotal = 0;
-
-    if (montoARS !== null) {
-      subtotal += montoARS;
-    }
-
-    if (montoUSD !== null) {
-      const exchangeRate = getExchangeRateValue(item.tipoDeCambio);
-
-      if (exchangeRate !== null) {
-        subtotal += montoUSD * exchangeRate;
-      }
-    }
-
-    return sum + subtotal;
-  }, 0);
-  const metaAhorro = 0.20;
-  const ahorroActual = totalIngresos - totalGastos;
-  const ahorroObjetivo = totalIngresos * metaAhorro;
-
-  const formatMoney = (amount) => {
-    return new Intl.NumberFormat('es-AR', { 
-      style: 'currency', 
-      currency: 'ARS',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0 
-    }).format(amount);
-  };
-
   const renderContent = () => {
     const sectionComponents = {
       dashboard: (
         <Dashboard
           selectedMonth={selectedMonth}
-          setSelectedMonth={setSelectedMonth}
-          totalIngresos={totalIngresos}
-          totalGastos={totalGastos}
+          setSelectedMonth={handleMonthChange}
+          monthOptions={monthOptions}
+          totalIngresos={ingresosARS}
+          totalGastos={gastosARS}
+          ahorroDelMes={ahorroDelMes}
+          ahorroHistorico={ahorroHistorico}
           ahorroActual={ahorroActual}
           ahorroObjetivo={ahorroObjetivo}
+          metaAhorro={metaAhorro}
+          isLoading={financeLoading}
+          error={financeError}
           formatMoney={formatMoney}
+          onRefresh={refreshFinanceData}
         />
       ),
-      ingresos: <Ingresos />,
-      gastos: <Gastos />, 
-      inversiones: <Inversiones inversiones={mockData.inversiones} formatMoney={formatMoney} />,
+      ingresos: <Ingresos onDataChanged={refreshFinanceData} />,
+      gastos: <Gastos onDataChanged={refreshFinanceData} />,
+      inversiones: <Inversiones inversiones={inversionesData} formatMoney={formatMoney} />,
       usuarios: (
         <div className="text-center py-12">
           <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
