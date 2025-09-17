@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 
 import { createGasto, fetchGastos } from '../../lib/supabaseClient';
 
@@ -185,12 +185,13 @@ const Gastos = ({ onDataChanged }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConceptDropdownVisible, setIsConceptDropdownVisible] = useState(false);
   const conceptDropdownHideTimeoutRef = useRef(null);
+  const conceptInputRef = useRef(null);
 
-  const filteredConceptOptions = useMemo(() => {
+  const visibleConceptOptions = useMemo(() => {
     const query = formData.concepto.trim().toLowerCase();
 
     if (query.length < 2) {
-      return [];
+      return CONCEPT_OPTIONS;
     }
 
     return CONCEPT_OPTIONS.filter((option) => option.toLowerCase().includes(query));
@@ -222,7 +223,7 @@ const Gastos = ({ onDataChanged }) => {
     setFormData((previous) => ({ ...previous, [name]: value }));
 
     if (name === 'concepto') {
-      setIsConceptDropdownVisible(value.trim().length >= 2);
+      setIsConceptDropdownVisible(true);
     }
   };
 
@@ -237,15 +238,25 @@ const Gastos = ({ onDataChanged }) => {
       conceptDropdownHideTimeoutRef.current = null;
     }
 
-    if (formData.concepto.trim().length >= 2) {
-      setIsConceptDropdownVisible(true);
-    }
+    setIsConceptDropdownVisible(true);
   };
 
   const handleConceptBlur = () => {
     conceptDropdownHideTimeoutRef.current = setTimeout(() => {
       setIsConceptDropdownVisible(false);
     }, 100);
+  };
+
+  const handleConceptDropdownToggle = () => {
+    setIsConceptDropdownVisible((previous) => {
+      const nextState = !previous;
+
+      if (nextState && conceptInputRef.current) {
+        conceptInputRef.current.focus();
+      }
+
+      return nextState;
+    });
   };
 
   useEffect(
@@ -364,16 +375,28 @@ const Gastos = ({ onDataChanged }) => {
                   id="concepto"
                   name="concepto"
                   type="text"
+                  ref={conceptInputRef}
                   value={formData.concepto}
                   onChange={handleInputChange}
                   onFocus={handleConceptFocus}
                   onBlur={handleConceptBlur}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 />
-                {isConceptDropdownVisible && filteredConceptOptions.length > 0 && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-500 hover:text-gray-700"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    handleConceptDropdownToggle();
+                  }}
+                  aria-label="Mostrar opciones de concepto"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isConceptDropdownVisible ? 'rotate-180' : ''}`} />
+                </button>
+                {isConceptDropdownVisible && visibleConceptOptions.length > 0 && (
                   <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                    {filteredConceptOptions.map((option) => (
+                    {visibleConceptOptions.map((option) => (
                       <li
                         key={option}
                         className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
