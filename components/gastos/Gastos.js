@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 
 import { createGasto, fetchGastos } from '../../lib/supabaseClient';
 
@@ -108,6 +108,73 @@ const sortByFechaDesc = (items) =>
     return dateB - dateA;
   });
 
+const CONCEPT_OPTIONS = [
+  'Panaderia',
+  'Pastas',
+  'Dietetica',
+  'Futbol',
+  'Fiambreria',
+  'Roxi (Nali)',
+  'Pollo / Carne',
+  'Al campo',
+  'Tarjetas RIO',
+  'Winter/Colonia',
+  'Tarjetas ICBC',
+  'UVA/ROBER',
+  'UVA - Escribano',
+  'Valeria del Mar 2023',
+  'Diferencia',
+  'Osde',
+  'Monotributo',
+  'Jardinero',
+  'Mantenimiento Pileta',
+  'Seguridad',
+  'Regalos y compras extras',
+  'Matricula',
+  'Actividades Joaqui',
+  'Kinesio',
+  'Nafta',
+  'Pescado',
+  'Supermercado',
+  'Naturgy (tarjeta Nali)',
+  'ARBA-Inmobiliario (tarjeta Nali)',
+  'Edenor',
+  'Aysa',
+  'SUBE',
+  'Personal Flow',
+  'Celulares',
+  'gimnasia artística',
+  'Salidas',
+  'Herrero',
+  'Cerco electrico',
+  'Reparacion Auto',
+  'Nali transfer RES',
+  'Burger',
+  'Regalitos cumples',
+  'Seña cumple Joaqui',
+  'calzas JOaqui',
+  'off crema',
+  'botas lluvia',
+  'Pañales',
+  'compras cumple, flores, cotillón, etc',
+  'Pago fotocopias winter',
+  'Foto Acuarela Joaqui',
+  'Regalo Mama',
+  'Regalo cumple Roberto + Nico',
+  'Mimo',
+  'Cafe Fertilis',
+  'Cumple mamá',
+  'Guantes/Polar',
+  'Estacionamiento',
+  'Propina cafe Andres',
+  'Almuerzo Blockinar',
+  'Calzones',
+  'Plata mamá de luli',
+  'Piso Cocina',
+  'Techista',
+  'Garmin Forerunner 165 music',
+];
+
 const Gastos = ({ onDataChanged }) => {
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +183,19 @@ const Gastos = ({ onDataChanged }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(createInitialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConceptDropdownVisible, setIsConceptDropdownVisible] = useState(false);
+  const conceptDropdownHideTimeoutRef = useRef(null);
+  const conceptInputRef = useRef(null);
+
+  const visibleConceptOptions = useMemo(() => {
+    const query = formData.concepto.trim().toLowerCase();
+
+    if (query.length < 2) {
+      return CONCEPT_OPTIONS;
+    }
+
+    return CONCEPT_OPTIONS.filter((option) => option.toLowerCase().includes(query));
+  }, [formData.concepto]);
 
   useEffect(() => {
     const loadGastos = async () => {
@@ -141,7 +221,52 @@ const Gastos = ({ onDataChanged }) => {
   const handleInputChange = (event) => {
     const { name, value } = event.target;
     setFormData((previous) => ({ ...previous, [name]: value }));
+
+    if (name === 'concepto') {
+      setIsConceptDropdownVisible(true);
+    }
   };
+
+  const handleConceptSelect = (concept) => {
+    setFormData((previous) => ({ ...previous, concepto: concept }));
+    setIsConceptDropdownVisible(false);
+  };
+
+  const handleConceptFocus = () => {
+    if (conceptDropdownHideTimeoutRef.current) {
+      clearTimeout(conceptDropdownHideTimeoutRef.current);
+      conceptDropdownHideTimeoutRef.current = null;
+    }
+
+    setIsConceptDropdownVisible(true);
+  };
+
+  const handleConceptBlur = () => {
+    conceptDropdownHideTimeoutRef.current = setTimeout(() => {
+      setIsConceptDropdownVisible(false);
+    }, 100);
+  };
+
+  const handleConceptDropdownToggle = () => {
+    setIsConceptDropdownVisible((previous) => {
+      const nextState = !previous;
+
+      if (nextState && conceptInputRef.current) {
+        conceptInputRef.current.focus();
+      }
+
+      return nextState;
+    });
+  };
+
+  useEffect(
+    () => () => {
+      if (conceptDropdownHideTimeoutRef.current) {
+        clearTimeout(conceptDropdownHideTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const resetForm = () => {
     setFormData(createInitialFormState());
@@ -242,7 +367,7 @@ const Gastos = ({ onDataChanged }) => {
                 />
               </div>
 
-              <div>
+              <div className="relative">
                 <label htmlFor="concepto" className="block text-sm font-medium text-gray-700 mb-1">
                   Concepto
                 </label>
@@ -250,11 +375,41 @@ const Gastos = ({ onDataChanged }) => {
                   id="concepto"
                   name="concepto"
                   type="text"
+                  ref={conceptInputRef}
                   value={formData.concepto}
                   onChange={handleInputChange}
+                  onFocus={handleConceptFocus}
+                  onBlur={handleConceptBlur}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-500 hover:text-gray-700"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    handleConceptDropdownToggle();
+                  }}
+                  aria-label="Mostrar opciones de concepto"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isConceptDropdownVisible ? 'rotate-180' : ''}`} />
+                </button>
+                {isConceptDropdownVisible && visibleConceptOptions.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {visibleConceptOptions.map((option) => (
+                      <li
+                        key={option}
+                        className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          handleConceptSelect(option);
+                        }}
+                      >
+                        {option}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>
