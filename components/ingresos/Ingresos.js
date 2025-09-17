@@ -104,7 +104,7 @@ const sortByFechaDesc = (items) =>
     return dateB - dateA;
   });
 
-const Ingresos = () => {
+const Ingresos = ({ onDataChanged }) => {
   const [ingresos, setIngresos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -168,6 +168,9 @@ const Ingresos = () => {
       const normalizedIngreso = normalizeIngreso(newIngreso);
 
       setIngresos((previous) => sortByFechaDesc([normalizedIngreso, ...previous]));
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
       resetForm();
       setShowForm(false);
     } catch (error) {
