@@ -47,15 +47,37 @@ const formatCurrency = (value, currency) => {
   }).format(amount);
 };
 
-const formatDate = (value) => {
+const parseDateValue = (value) => {
   if (!value) {
-    return '—';
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'string') {
+    const parts = value.split('-').map((part) => Number.parseInt(part, 10));
+
+    if (parts.length === 3 && parts.every((part) => Number.isInteger(part))) {
+      const [year, month, day] = parts;
+      const date = new Date(year, month - 1, day);
+
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
+    }
   }
 
   const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
-  if (Number.isNaN(date.getTime())) {
-    return value;
+const formatDate = (value) => {
+  const date = parseDateValue(value);
+
+  if (!date) {
+    return typeof value === 'string' && value.trim() ? value : '—';
   }
 
   return date.toLocaleDateString('es-AR', {
@@ -90,22 +112,22 @@ const normalizeGasto = (record) => ({
 
 const sortByFechaDesc = (items) =>
   [...items].sort((a, b) => {
-    const dateA = new Date(a.fecha).getTime();
-    const dateB = new Date(b.fecha).getTime();
+    const dateA = parseDateValue(a.fecha);
+    const dateB = parseDateValue(b.fecha);
 
-    if (Number.isNaN(dateA) && Number.isNaN(dateB)) {
+    if (!dateA && !dateB) {
       return 0;
     }
 
-    if (Number.isNaN(dateA)) {
+    if (!dateA) {
       return 1;
     }
 
-    if (Number.isNaN(dateB)) {
+    if (!dateB) {
       return -1;
     }
 
-    return dateB - dateA;
+    return dateB.getTime() - dateA.getTime();
   });
 
 const CONCEPT_OPTIONS = [
