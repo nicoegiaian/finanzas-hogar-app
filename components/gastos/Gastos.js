@@ -4,6 +4,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 
 import { createGasto, fetchGastos } from '../../lib/supabaseClient';
+import {
+  formatPeriodLabel,
+  getCurrentPeriod,
+  normalizePeriod,
+  sortPeriodsDesc,
+} from '../../lib/financeUtils';
 
 const createInitialFormState = () => ({
   fecha: new Date().toISOString().split('T')[0],
@@ -197,6 +203,54 @@ const CONCEPT_OPTIONS = [
   'Garmin Forerunner 165 music',
 ];
 
+const getPreviousPeriod = (period) => {
+  const normalized = normalizePeriod(period);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const [yearString, monthString] = normalized.split('-');
+  const year = Number.parseInt(yearString, 10);
+  const month = Number.parseInt(monthString, 10);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    return null;
+  }
+
+  const referenceDate = new Date(year, month - 1, 1);
+  referenceDate.setMonth(referenceDate.getMonth() - 1);
+
+  return normalizePeriod(referenceDate);
+};
+
+const buildDateForPeriod = (period, referenceDate) => {
+  const normalized = normalizePeriod(period);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const [yearString, monthString] = normalized.split('-');
+  const year = Number.parseInt(yearString, 10);
+  const month = Number.parseInt(monthString, 10);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    return null;
+  }
+
+  const parsedReference = parseDateValue(referenceDate);
+  const desiredDay = parsedReference ? parsedReference.getDate() : 1;
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  const safeDay = Math.min(Math.max(desiredDay, 1), lastDayOfMonth);
+
+  const targetDate = new Date(year, month - 1, safeDay);
+  return targetDate.toISOString().split('T')[0];
+};
+
+const getTrimmedValue = (value, fallback = '') =>
+  typeof value === 'string' ? value.trim() : fallback;
+
 const Gastos = ({ onDataChanged }) => {
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +262,9 @@ const Gastos = ({ onDataChanged }) => {
   const [isConceptDropdownVisible, setIsConceptDropdownVisible] = useState(false);
   const conceptDropdownHideTimeoutRef = useRef(null);
   const conceptInputRef = useRef(null);
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentPeriod());
+  const [isCopying, setIsCopying] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
 
   const visibleConceptOptions = useMemo(() => {
     const query = formData.concepto.trim().toLowerCase();
@@ -239,6 +296,129 @@ const Gastos = ({ onDataChanged }) => {
 
     loadGastos();
   }, []);
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => setToastMessage(null), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [toastMessage]);
+
+  const defaultPeriod = useMemo(() => getCurrentPeriod(), []);
+
+  const monthOptions = useMemo(() => {
+    const periods = new Set();
+
+    gastos.forEach((gasto) => {
+      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
+
+      if (period) {
+        periods.add(period);
+      }
+    });
+
+    const normalizedSelected = normalizePeriod(selectedMonth);
+    if (normalizedSelected) {
+      periods.add(normalizedSelected);
+    }
+
+    const normalizedDefault = normalizePeriod(defaultPeriod);
+    if (normalizedDefault) {
+      periods.add(normalizedDefault);
+    }
+
+    const options = sortPeriodsDesc(Array.from(periods));
+    return options.length > 0 ? options : [defaultPeriod];
+  }, [gastos, selectedMonth, defaultPeriod]);
+
+  const filteredGastos = useMemo(() => {
+    const normalized = normalizePeriod(selectedMonth);
+
+    if (!normalized) {
+      return gastos;
+    }
+
+    return gastos.filter((gasto) => {
+      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
+      return period === normalized;
+    });
+  }, [gastos, selectedMonth]);
+
+  const handleMonthChange = (event) => {
+    const normalized = normalizePeriod(event.target.value);
+    setSelectedMonth(normalized ?? defaultPeriod ?? '');
+  };
+
+  const handleCopyPreviousMonth = async () => {
+    const normalizedSelected = normalizePeriod(selectedMonth);
+
+    if (!normalizedSelected) {
+      setToastMessage('Seleccioná un periodo válido.');
+      return;
+    }
+
+    const previousPeriod = getPreviousPeriod(normalizedSelected);
+
+    if (!previousPeriod) {
+      setToastMessage('No hay movimientos el mes anterior');
+      return;
+    }
+
+    const recordsToCopy = gastos.filter((gasto) => {
+      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
+      return period === previousPeriod;
+    });
+
+    if (recordsToCopy.length === 0) {
+      setToastMessage('No hay movimientos el mes anterior');
+      return;
+    }
+
+    setIsCopying(true);
+
+    try {
+      const createdGastos = await Promise.all(
+        recordsToCopy.map(async (gasto) => {
+          const newFecha = buildDateForPeriod(normalizedSelected, gasto?.fecha) ?? `${normalizedSelected}-01`;
+          const montoARS = parseAmount(gasto?.montoARS ?? gasto?.monto_ars);
+          const montoUSD = parseAmount(gasto?.montoUSD ?? gasto?.monto_usd);
+          const tipoCambio = getTrimmedValue(gasto?.tipoDeCambio ?? gasto?.tipo_de_cambio);
+
+          const payload = {
+            fecha: newFecha,
+            concepto: getTrimmedValue(gasto?.concepto),
+            usuario: getTrimmedValue(gasto?.usuario),
+            tipo_movimiento: getTrimmedValue(gasto?.tipoMovimiento ?? gasto?.tipo_movimiento),
+            tipo_de_cambio: tipoCambio || null,
+            monto_ars: montoARS ?? 0,
+            monto_usd: montoUSD,
+          };
+
+          const newGasto = await createGasto(payload);
+          return normalizeGasto(newGasto);
+        }),
+      );
+
+      setGastos((previous) => sortByFechaDesc([...createdGastos, ...previous]));
+
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
+
+      setToastMessage(
+        createdGastos.length === 1
+          ? 'Se copió 1 gasto del mes anterior.'
+          : `Se copiaron ${createdGastos.length} gastos del mes anterior.`,
+      );
+    } catch (error) {
+      console.error('Error al copiar gastos del mes anterior', error);
+      setToastMessage(error?.message ?? 'No pudimos copiar los gastos del mes anterior.');
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -287,7 +467,7 @@ const Gastos = ({ onDataChanged }) => {
         clearTimeout(conceptDropdownHideTimeoutRef.current);
       }
     },
-    []
+    [],
   );
 
   const resetForm = () => {
@@ -335,19 +515,52 @@ const Gastos = ({ onDataChanged }) => {
 
   return (
     <div className="space-y-6">
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          {toastMessage}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Gastos</h1>
-        <button
-          type="button"
-          onClick={() => {
-            setShowForm(true);
-            setFormError(null);
-          }}
-          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Agregar gasto
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <select
+            value={selectedMonth ?? ''}
+            onChange={handleMonthChange}
+            className="bg-white border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+          >
+            {monthOptions.map((option) => (
+              <option key={option} value={option}>
+                {formatPeriodLabel(option)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleCopyPreviousMonth}
+            disabled={isCopying || loading || !selectedMonth}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {isCopying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Copiando...
+              </>
+            ) : (
+              'Copiar mes anterior'
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm(true);
+              setFormError(null);
+            }}
+            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Agregar gasto
+          </button>
+        </div>
       </div>
 
       {loadError && (
@@ -545,9 +758,9 @@ const Gastos = ({ onDataChanged }) => {
         <div className="overflow-x-auto">
           {loading ? (
             <div className="p-6 text-center text-gray-500 text-sm">Cargando gastos...</div>
-          ) : gastos.length === 0 ? (
+          ) : filteredGastos.length === 0 ? (
             <div className="p-6 text-center text-gray-500 text-sm">
-              {loadError ? 'No pudimos cargar los gastos.' : 'Todavía no registraste gastos.'}
+              {loadError ? 'No pudimos cargar los gastos.' : 'No registraste gastos en el periodo seleccionado.'}
             </div>
           ) : (
             <table className="min-w-full">
@@ -577,7 +790,7 @@ const Gastos = ({ onDataChanged }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {gastos.map((gasto) => (
+                {filteredGastos.map((gasto) => (
                   <tr key={gasto.id} className="hover:bg-gray-50">
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(gasto.fecha)}
