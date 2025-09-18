@@ -232,7 +232,7 @@ const CONCEPT_OPTIONS = [
   'Garmin Forerunner 165 music',
 ];
 
-const getPreviousPeriod = (period) => {
+const getNextPeriod = (period) => {
   const normalized = normalizePeriod(period);
 
   if (!normalized) {
@@ -248,7 +248,7 @@ const getPreviousPeriod = (period) => {
   }
 
   const referenceDate = new Date(year, month - 1, 1);
-  referenceDate.setMonth(referenceDate.getMonth() - 1);
+  referenceDate.setMonth(referenceDate.getMonth() + 1);
 
   return normalizePeriod(referenceDate);
 };
@@ -391,20 +391,20 @@ const Gastos = ({ onDataChanged }) => {
       return;
     }
 
-    const previousPeriod = getPreviousPeriod(normalizedSelected);
+    const nextPeriod = getNextPeriod(normalizedSelected);
 
-    if (!previousPeriod) {
-      setToastMessage('No hay movimientos el mes anterior');
+    if (!nextPeriod) {
+      setToastMessage('No pudimos determinar el próximo periodo.');
       return;
     }
 
     const recordsToCopy = gastos.filter((gasto) => {
       const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
-      return period === previousPeriod;
+      return period === normalizedSelected;
     });
 
     if (recordsToCopy.length === 0) {
-      setToastMessage('No hay movimientos el mes anterior');
+      setToastMessage('No hay movimientos en el periodo seleccionado.');
       return;
     }
 
@@ -413,7 +413,7 @@ const Gastos = ({ onDataChanged }) => {
     try {
       const createdGastos = await Promise.all(
         recordsToCopy.map(async (gasto) => {
-          const newFecha = buildDateForPeriod(normalizedSelected, gasto?.fecha) ?? `${normalizedSelected}-01`;
+          const newFecha = buildDateForPeriod(nextPeriod, gasto?.fecha) ?? `${nextPeriod}-01`;
           const montoARS = parseAmount(gasto?.montoARS ?? gasto?.monto_ars);
           const montoUSD = parseAmount(gasto?.montoUSD ?? gasto?.monto_usd);
           const tipoCambio = getTrimmedValue(gasto?.tipoDeCambio ?? gasto?.tipo_de_cambio);
@@ -439,14 +439,16 @@ const Gastos = ({ onDataChanged }) => {
         onDataChanged();
       }
 
+      setSelectedMonth(nextPeriod);
+
       setToastMessage(
         createdGastos.length === 1
-          ? 'Se copió 1 gasto del mes anterior.'
-          : `Se copiaron ${createdGastos.length} gastos del mes anterior.`,
+          ? 'Se copió 1 gasto al mes siguiente.'
+          : `Se copiaron ${createdGastos.length} gastos al mes siguiente.`,
       );
     } catch (error) {
-      console.error('Error al copiar gastos del mes anterior', error);
-      setToastMessage(error?.message ?? 'No pudimos copiar los gastos del mes anterior.');
+      console.error('Error al copiar gastos al mes siguiente', error);
+      setToastMessage(error?.message ?? 'No pudimos copiar los gastos al mes siguiente.');
     } finally {
       setIsCopying(false);
     }

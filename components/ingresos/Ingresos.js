@@ -161,7 +161,7 @@ const sortByFechaDesc = (items) =>
     return dateB.getTime() - dateA.getTime();
   });
 
-const getPreviousPeriod = (period) => {
+const getNextPeriod = (period) => {
   const normalized = normalizePeriod(period);
 
   if (!normalized) {
@@ -177,7 +177,7 @@ const getPreviousPeriod = (period) => {
   }
 
   const referenceDate = new Date(year, month - 1, 1);
-  referenceDate.setMonth(referenceDate.getMonth() - 1);
+  referenceDate.setMonth(referenceDate.getMonth() + 1);
 
   return normalizePeriod(referenceDate);
 };
@@ -306,20 +306,20 @@ const Ingresos = ({ onDataChanged }) => {
       return;
     }
 
-    const previousPeriod = getPreviousPeriod(normalizedSelected);
+    const nextPeriod = getNextPeriod(normalizedSelected);
 
-    if (!previousPeriod) {
-      setToastMessage('No hay movimientos el mes anterior');
+    if (!nextPeriod) {
+      setToastMessage('No pudimos determinar el próximo periodo.');
       return;
     }
 
     const recordsToCopy = ingresos.filter((ingreso) => {
       const period = normalizePeriod(ingreso?.fecha ?? ingreso?.periodo ?? ingreso?.mes);
-      return period === previousPeriod;
+      return period === normalizedSelected;
     });
 
     if (recordsToCopy.length === 0) {
-      setToastMessage('No hay movimientos el mes anterior');
+      setToastMessage('No hay movimientos en el periodo seleccionado.');
       return;
     }
 
@@ -328,7 +328,7 @@ const Ingresos = ({ onDataChanged }) => {
     try {
       const createdIngresos = await Promise.all(
         recordsToCopy.map(async (ingreso) => {
-          const newFecha = buildDateForPeriod(normalizedSelected, ingreso?.fecha) ?? `${normalizedSelected}-01`;
+          const newFecha = buildDateForPeriod(nextPeriod, ingreso?.fecha) ?? `${nextPeriod}-01`;
           const montoARS = parseAmount(ingreso?.montoARS ?? ingreso?.monto_ars);
           const montoUSD = parseAmount(ingreso?.montoUSD ?? ingreso?.monto_usd);
 
@@ -353,14 +353,16 @@ const Ingresos = ({ onDataChanged }) => {
         onDataChanged();
       }
 
+      setSelectedMonth(nextPeriod);
+
       setToastMessage(
         createdIngresos.length === 1
-          ? 'Se copió 1 ingreso del mes anterior.'
-          : `Se copiaron ${createdIngresos.length} ingresos del mes anterior.`,
+          ? 'Se copió 1 ingreso al mes siguiente.'
+          : `Se copiaron ${createdIngresos.length} ingresos al mes siguiente.`,
       );
     } catch (error) {
-      console.error('Error al copiar ingresos del mes anterior', error);
-      setToastMessage(error?.message ?? 'No pudimos copiar los ingresos del mes anterior.');
+      console.error('Error al copiar ingresos al mes siguiente', error);
+      setToastMessage(error?.message ?? 'No pudimos copiar los ingresos al mes siguiente.');
     } finally {
       setIsCopying(false);
     }
