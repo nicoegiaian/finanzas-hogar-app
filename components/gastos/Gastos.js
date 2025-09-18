@@ -594,14 +594,25 @@ const Gastos = ({ onDataChanged }) => {
     setIsUpdatingGasto(true);
 
     try {
+      const nextMontoARS = parseAmount(editingGastoValues.montoARS);
+      const nextMontoUSD = parseAmount(editingGastoValues.montoUSD);
+
       const payload = {
         fecha: editingGastoValues.fecha,
-        monto_ars: parseAmount(editingGastoValues.montoARS),
-        monto_usd: parseAmount(editingGastoValues.montoUSD),
+        monto_ars: nextMontoARS,
+        monto_usd: nextMontoUSD,
       };
 
       const updatedGasto = await updateGasto(gastoToEdit, payload);
-      const normalizedGasto = normalizeGasto(updatedGasto);
+      const normalizedGasto =
+        updatedGasto && Object.keys(updatedGasto).length > 0
+          ? normalizeGasto(updatedGasto)
+          : {
+              ...gastoToEdit,
+              fecha: editingGastoValues.fecha,
+              montoARS: nextMontoARS,
+              montoUSD: nextMontoUSD,
+            };
 
       setGastos((previous) =>
         sortByFechaDesc(previous.map((item) => (item.id === editingGastoId ? normalizedGasto : item))),
