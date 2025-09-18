@@ -111,13 +111,49 @@ const buildFallbackId = (record) => {
   return `${base}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const resolveRecordIdentifier = (record) => {
-  if (record && record.id !== null && record.id !== undefined) {
-    return { field: 'id', value: record.id };
+const IDENTIFIER_FIELDS = [
+  'id',
+  'Id',
+  'ID',
+  'uuid',
+  'Uuid',
+  'UUID',
+  'ingreso_id',
+  'ingresoId',
+  'IngresoId',
+  'IngresoID',
+  'ingreso_uuid',
+  'ingresoUuid',
+  'IngresoUuid',
+  'IngresoUUID',
+];
+
+const getIdentifierValue = (record, field) => {
+  if (!record || typeof record !== 'object' || !field) {
+    return null;
   }
 
-  if (record && record.uuid !== null && record.uuid !== undefined) {
-    return { field: 'uuid', value: record.uuid };
+  const value = record[field];
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+
+  return value;
+};
+
+const resolveRecordIdentifier = (record) => {
+  for (const field of IDENTIFIER_FIELDS) {
+    const value = getIdentifierValue(record, field);
+
+    if (value !== null) {
+      return { field, value };
+    }
   }
 
   return { field: null, value: null };
@@ -126,8 +162,11 @@ const resolveRecordIdentifier = (record) => {
 const normalizeIngreso = (record) => {
   const { field, value } = resolveRecordIdentifier(record);
 
+  const identifierCandidates = IDENTIFIER_FIELDS.map((field) => getIdentifierValue(record, field));
+  const normalizedId = identifierCandidates.find((value) => value !== null) ?? buildFallbackId(record);
+
   return {
-    id: record.id ?? record.uuid ?? buildFallbackId(record),
+    id: normalizedId,
     databaseId: value,
     databaseIdField: field,
     fecha: record.fecha ?? '',
