@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2, AlertCircle, ChevronDown, Pencil, Check, X } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, ChevronDown, Pencil, Check, X, Trash2 } from 'lucide-react';
 
-import { createGasto, fetchGastos, updateGasto } from '../../lib/supabaseClient';
+import { createGasto, deleteGasto, fetchGastos, updateGasto } from '../../lib/supabaseClient';
 import {
   formatPeriodLabel,
   getCurrentPeriod,
@@ -23,6 +23,8 @@ const createInitialFormState = () => ({
 
 const createInitialEditingState = () => ({
   fecha: '',
+  concepto: '',
+  tipoMovimiento: '',
   montoARS: '',
   montoUSD: '',
 });
@@ -336,6 +338,7 @@ const Gastos = ({ onDataChanged }) => {
   const [editingGastoId, setEditingGastoId] = useState(null);
   const [editingGastoValues, setEditingGastoValues] = useState(() => createInitialEditingState());
   const [isUpdatingGasto, setIsUpdatingGasto] = useState(false);
+  const [deletingGastoId, setDeletingGastoId] = useState(null);
 
   const visibleConceptOptions = useMemo(() => {
     const query = formData.concepto.trim().toLowerCase();
@@ -594,6 +597,8 @@ const Gastos = ({ onDataChanged }) => {
     setEditingGastoId(gasto.id);
     setEditingGastoValues({
       fecha: formatDateForInput(gasto.fecha) || '',
+      concepto: gasto.concepto ?? '',
+      tipoMovimiento: gasto.tipoMovimiento ?? '',
       montoARS: gasto.montoARS ?? '',
       montoUSD: gasto.montoUSD ?? '',
     });
@@ -638,6 +643,8 @@ const Gastos = ({ onDataChanged }) => {
 
       const payload = {
         fecha: editingGastoValues.fecha,
+        concepto: getTrimmedValue(editingGastoValues.concepto),
+        tipo_movimiento: getTrimmedValue(editingGastoValues.tipoMovimiento),
         monto_ars: nextMontoARS,
         monto_usd: nextMontoUSD,
       };
@@ -649,6 +656,11 @@ const Gastos = ({ onDataChanged }) => {
           : {
               ...gastoToEdit,
               fecha: editingGastoValues.fecha,
+              concepto: getTrimmedValue(editingGastoValues.concepto, gastoToEdit.concepto),
+              tipoMovimiento: getTrimmedValue(
+                editingGastoValues.tipoMovimiento,
+                gastoToEdit.tipoMovimiento,
+              ),
               montoARS: nextMontoARS,
               montoUSD: nextMontoUSD,
             };
@@ -669,6 +681,41 @@ const Gastos = ({ onDataChanged }) => {
       setToastMessage(error?.message ?? 'No pudimos actualizar el gasto.');
     } finally {
       setIsUpdatingGasto(false);
+    }
+  };
+
+  const handleDeleteGasto = async (gasto) => {
+    if (!gasto || deletingGastoId) {
+      return;
+    }
+
+    const confirmed = window.confirm('¿Querés borrar este gasto?');
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingGastoId(gasto.id);
+
+    try {
+      await deleteGasto(gasto);
+      setGastos((previous) => previous.filter((item) => item.id !== gasto.id));
+
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
+
+      if (editingGastoId === gasto.id) {
+        setEditingGastoId(null);
+        setEditingGastoValues(createInitialEditingState());
+      }
+
+      setToastMessage('Gasto eliminado correctamente.');
+    } catch (error) {
+      console.error('Error al eliminar el gasto', error);
+      setToastMessage(error?.message ?? 'No pudimos borrar el gasto.');
+    } finally {
+      setDeletingGastoId(null);
     }
   };
 
@@ -967,13 +1014,33 @@ const Gastos = ({ onDataChanged }) => {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {gasto.concepto || '—'}
+                      {editingGastoId === gasto.id ? (
+                        <input
+                          type="text"
+                          value={editingGastoValues.concepto}
+                          onChange={(event) => handleEditGastoChange('concepto', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Concepto"
+                        />
+                      ) : (
+                        gasto.concepto || '—'
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {gasto.usuario || '—'}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {gasto.tipoMovimiento || '—'}
+                      {editingGastoId === gasto.id ? (
+                        <input
+                          type="text"
+                          value={editingGastoValues.tipoMovimiento}
+                          onChange={(event) => handleEditGastoChange('tipoMovimiento', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Tipo de movimiento"
+                        />
+                      ) : (
+                        gasto.tipoMovimiento || '—'
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {gasto.tipoDeCambio ? gasto.tipoDeCambio : '—'}
@@ -1032,14 +1099,29 @@ const Gastos = ({ onDataChanged }) => {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditingGasto(gasto)}
-                          className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
-                          title="Editar gasto"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditingGasto(gasto)}
+                            className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
+                            title="Editar gasto"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteGasto(gasto)}
+                            disabled={deletingGastoId === gasto.id}
+                            className="inline-flex items-center justify-center rounded-lg bg-red-100 px-3 py-1 text-red-600 hover:bg-red-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            title="Eliminar gasto"
+                          >
+                            {deletingGastoId === gasto.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
