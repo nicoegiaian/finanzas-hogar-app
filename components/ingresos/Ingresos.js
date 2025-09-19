@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Pencil, Check, X, Trash2 } from 'lucide-react';
 
-import { createIngreso, fetchIngresos, updateIngreso } from '../../lib/supabaseClient';
+import { createIngreso, deleteIngreso, fetchIngresos, updateIngreso } from '../../lib/supabaseClient';
 import {
   formatPeriodLabel,
   getCurrentPeriod,
@@ -23,6 +23,8 @@ const createInitialFormState = () => ({
 
 const createInitialEditingState = () => ({
   fecha: '',
+  concepto: '',
+  tipoMovimiento: '',
   montoARS: '',
   montoUSD: '',
 });
@@ -262,6 +264,7 @@ const Ingresos = ({ onDataChanged }) => {
   const [editingIngresoId, setEditingIngresoId] = useState(null);
   const [editingIngresoValues, setEditingIngresoValues] = useState(() => createInitialEditingState());
   const [isUpdatingIngreso, setIsUpdatingIngreso] = useState(false);
+  const [deletingIngresoId, setDeletingIngresoId] = useState(null);
 
   useEffect(() => {
     const loadIngresos = async () => {
@@ -463,6 +466,8 @@ const Ingresos = ({ onDataChanged }) => {
     setEditingIngresoId(ingreso.id);
     setEditingIngresoValues({
       fecha: formatDateForInput(ingreso.fecha) || '',
+      concepto: ingreso.concepto ?? '',
+      tipoMovimiento: ingreso.tipoMovimiento ?? '',
       montoARS: ingreso.montoARS ?? '',
       montoUSD: ingreso.montoUSD ?? '',
     });
@@ -504,6 +509,8 @@ const Ingresos = ({ onDataChanged }) => {
     try {
       const payload = {
         fecha: editingIngresoValues.fecha,
+        concepto: getTrimmedValue(editingIngresoValues.concepto),
+        tipo_movimiento: getTrimmedValue(editingIngresoValues.tipoMovimiento),
         monto_ars: parseAmount(editingIngresoValues.montoARS),
         monto_usd: parseAmount(editingIngresoValues.montoUSD),
       };
@@ -529,6 +536,41 @@ const Ingresos = ({ onDataChanged }) => {
       setToastMessage(error?.message ?? 'No pudimos actualizar el ingreso.');
     } finally {
       setIsUpdatingIngreso(false);
+    }
+  };
+
+  const handleDeleteIngreso = async (ingreso) => {
+    if (!ingreso || deletingIngresoId) {
+      return;
+    }
+
+    const confirmed = window.confirm('¿Querés borrar este ingreso?');
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingIngresoId(ingreso.id);
+
+    try {
+      await deleteIngreso(ingreso);
+      setIngresos((previous) => previous.filter((item) => item.id !== ingreso.id));
+
+      if (typeof onDataChanged === 'function') {
+        onDataChanged();
+      }
+
+      if (editingIngresoId === ingreso.id) {
+        setEditingIngresoId(null);
+        setEditingIngresoValues(createInitialEditingState());
+      }
+
+      setToastMessage('Ingreso eliminado correctamente.');
+    } catch (error) {
+      console.error('Error al eliminar el ingreso', error);
+      setToastMessage(error?.message ?? 'No pudimos borrar el ingreso.');
+    } finally {
+      setDeletingIngresoId(null);
     }
   };
 
@@ -798,13 +840,33 @@ const Ingresos = ({ onDataChanged }) => {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ingreso.concepto || '—'}
+                      {editingIngresoId === ingreso.id ? (
+                        <input
+                          type="text"
+                          value={editingIngresoValues.concepto}
+                          onChange={(event) => handleEditIngresoChange('concepto', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="Concepto"
+                        />
+                      ) : (
+                        ingreso.concepto || '—'
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ingreso.usuario || '—'}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ingreso.tipoMovimiento || '—'}
+                      {editingIngresoId === ingreso.id ? (
+                        <input
+                          type="text"
+                          value={editingIngresoValues.tipoMovimiento}
+                          onChange={(event) => handleEditIngresoChange('tipoMovimiento', event.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="Tipo de movimiento"
+                        />
+                      ) : (
+                        ingreso.tipoMovimiento || '—'
+                      )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {ingreso.tipoDeCambio || '—'}
@@ -863,14 +925,29 @@ const Ingresos = ({ onDataChanged }) => {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditingIngreso(ingreso)}
-                          className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
-                          title="Editar ingreso"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditingIngreso(ingreso)}
+                            className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-3 py-1 text-gray-700 hover:bg-gray-200 transition-colors"
+                            title="Editar ingreso"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteIngreso(ingreso)}
+                            disabled={deletingIngresoId === ingreso.id}
+                            className="inline-flex items-center justify-center rounded-lg bg-red-100 px-3 py-1 text-red-600 hover:bg-red-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            title="Eliminar ingreso"
+                          >
+                            {deletingIngresoId === ingreso.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
