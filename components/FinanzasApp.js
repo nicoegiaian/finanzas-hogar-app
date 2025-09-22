@@ -150,6 +150,7 @@ export default function FinanzasApp() {
           error={financeError}
           formatMoney={formatMoney}
           onRefresh={refreshFinanceData}
+          gastos={gastos}
         />
       ),
       ingresos: <Ingresos onDataChanged={refreshFinanceData} />,
