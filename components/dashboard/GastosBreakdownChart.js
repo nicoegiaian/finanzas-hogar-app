@@ -234,9 +234,9 @@ export default function GastosBreakdownChart({
                   .filter(({ value }) => value > 0);
 
                 return (
-                  <div key={month.period} className="min-w-[4.5rem] flex-1">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="w-full flex-1 flex items-end">
+                  <div key={month.period} className="min-w-[4.5rem] flex-1 h-full">
+                    <div className="flex h-full flex-col items-center gap-2">
+                      <div className="w-full flex-1 flex items-end h-full">
                         <div className="w-full h-full flex items-end gap-2 rounded-lg bg-gray-50 px-2 pt-2">
                           {segments.map(({ category, value }) => {
                             const heightPercent = maxValue > 0 ? (value / maxValue) * 100 : 0;
