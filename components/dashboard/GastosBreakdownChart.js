@@ -107,9 +107,24 @@ export default function GastosBreakdownChart({
   const categoryColors = useCategoryColors(allCategories);
 
   const maxValue = useMemo(() => {
-    return chartMonths.reduce((max, month) => {
-      const monthTotal = Number(month?.total ?? 0);
-      return monthTotal > max ? monthTotal : max;
+    return chartMonths.reduce((globalMax, month) => {
+      const breakdown = month?.breakdown ?? {};
+
+      if (!breakdown || typeof breakdown !== 'object') {
+        return globalMax;
+      }
+
+      const monthMax = Object.values(breakdown).reduce((monthMaxValue, rawValue) => {
+        const numericValue = Number(rawValue);
+
+        if (!Number.isFinite(numericValue) || numericValue <= 0) {
+          return monthMaxValue;
+        }
+
+        return numericValue > monthMaxValue ? numericValue : monthMaxValue;
+      }, 0);
+
+      return monthMax > globalMax ? monthMax : globalMax;
     }, 0);
   }, [chartMonths]);
 
@@ -119,9 +134,35 @@ export default function GastosBreakdownChart({
     }
 
     const steps = 4;
-    const stepValue = maxValue / steps;
+    const rawStep = maxValue / steps;
+    const magnitude = 10 ** Math.floor(Math.log10(rawStep || 1));
+    const normalized = rawStep / magnitude;
+    let niceNormalized;
 
-    return Array.from({ length: steps + 1 }, (_, index) => Math.round(stepValue * index));
+    if (normalized <= 1) {
+      niceNormalized = 1;
+    } else if (normalized <= 2) {
+      niceNormalized = 2;
+    } else if (normalized <= 5) {
+      niceNormalized = 5;
+    } else {
+      niceNormalized = 10;
+    }
+
+    const stepValue = niceNormalized * magnitude;
+    let topValue = stepValue * steps;
+
+    if (topValue < maxValue) {
+      topValue += stepValue;
+    }
+
+    const marks = [];
+
+    for (let value = 0; value <= topValue + stepValue / 2; value += stepValue) {
+      marks.push(Math.round(value));
+    }
+
+    return marks;
   }, [maxValue]);
 
   const renderLegend = () => {
@@ -196,15 +237,15 @@ export default function GastosBreakdownChart({
                   <div key={month.period} className="min-w-[4.5rem] flex-1">
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-full flex-1 flex items-end">
-                        <div className="w-full flex flex-col justify-end gap-[2px] rounded-lg overflow-hidden bg-gray-50">
+                        <div className="w-full h-full flex items-end gap-2 rounded-lg bg-gray-50 px-2 pt-2">
                           {segments.map(({ category, value }) => {
                             const heightPercent = maxValue > 0 ? (value / maxValue) * 100 : 0;
-                            const minHeight = value > 0 && heightPercent < 4 ? '6px' : undefined;
+                            const minHeight = value > 0 && heightPercent < 6 ? '8px' : undefined;
 
                             return (
                               <div
                                 key={`${month.period}-${category}`}
-                                className="w-full flex items-center justify-center text-[10px] font-semibold text-white"
+                                className="flex-1 flex items-end justify-center rounded-t-md text-[10px] font-semibold text-white"
                                 style={{
                                   backgroundColor: categoryColors[category],
                                   height: `${heightPercent}%`,
