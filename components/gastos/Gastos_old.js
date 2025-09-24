@@ -1,14 +1,7 @@
-Hola. Con gusto te ayudo a agregar la funcionalidad de ordenamiento a la tabla de gastos. He modificado el archivo `Gastos.js` para incluir un nuevo estado de ordenamiento y una función para manejar el clic en los encabezados de las columnas.
-
-Ahora, puedes hacer clic en cualquier encabezado de las columnas **Fecha**, **Concepto**, **Usuario**, **Tipo de movimiento**, **Monto ARS** y **Monto USD** para ordenar la tabla de forma ascendente o descendente. He añadido un ícono de flecha al lado del título de la columna para indicar el estado de ordenación actual.
-
-Aquí tienes el archivo completo con esta nueva característica:
-
-```jsx
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Loader2, AlertCircle, ChevronDown, Pencil, Check, X, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, ChevronDown, Pencil, Check, X, Trash2 } from 'lucide-react';
 
 import { createGasto, deleteGasto, fetchGastos, updateGasto } from '../../lib/supabaseClient';
 import {
@@ -346,8 +339,6 @@ const Gastos = ({ onDataChanged }) => {
   const [editingGastoValues, setEditingGastoValues] = useState(() => createInitialEditingState());
   const [isUpdatingGasto, setIsUpdatingGasto] = useState(false);
   const [deletingGastoId, setDeletingGastoId] = useState(null);
-  // Nuevo estado para el ordenamiento
-  const [sortConfig, setSortConfig] = useState({ column: 'fecha', direction: 'desc' });
 
   const visibleConceptOptions = useMemo(() => {
     const query = formData.concepto.trim().toLowerCase();
@@ -418,49 +409,16 @@ const Gastos = ({ onDataChanged }) => {
 
   const filteredGastos = useMemo(() => {
     const normalized = normalizePeriod(selectedMonth);
-    let currentGastos = normalized
-      ? gastos.filter((gasto) => normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes) === normalized)
-      : gastos;
 
-    // Lógica de ordenamiento
-    if (sortConfig.column !== null) {
-      currentGastos = [...currentGastos].sort((a, b) => {
-        const aValue = a[sortConfig.column];
-        const bValue = b[sortConfig.column];
-
-        let comparison = 0;
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          comparison = aValue.localeCompare(bValue, 'es', { numeric: true });
-        } else if (sortConfig.column === 'fecha') {
-          const dateA = parseDateValue(aValue)?.getTime() ?? 0;
-          const dateB = parseDateValue(bValue)?.getTime() ?? 0;
-          comparison = dateA - dateB;
-        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-          comparison = aValue - bValue;
-        } else {
-          // Fallback para tipos de datos mixtos o null
-          const aString = String(aValue || '');
-          const bString = String(bValue || '');
-          comparison = aString.localeCompare(bString, 'es', { numeric: true });
-        }
-        
-        return sortConfig.direction === 'asc' ? comparison : -comparison;
-      });
+    if (!normalized) {
+      return gastos;
     }
 
-    return currentGastos;
-  }, [gastos, selectedMonth, sortConfig]);
-
-  // Nueva función para manejar el clic en la columna de ordenamiento
-  const handleSort = (columnName) => {
-    setSortConfig((previous) => {
-      let direction = 'asc';
-      if (previous.column === columnName && previous.direction === 'asc') {
-        direction = 'desc';
-      }
-      return { column: columnName, direction };
+    return gastos.filter((gasto) => {
+      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
+      return period === normalized;
     });
-  };
+  }, [gastos, selectedMonth]);
 
   const handleMonthChange = (event) => {
     const normalized = normalizePeriod(event.target.value);
@@ -761,17 +719,6 @@ const Gastos = ({ onDataChanged }) => {
     }
   };
 
-  // Helper para renderizar los íconos de ordenamiento
-  const renderSortIcon = (columnName) => {
-    if (sortConfig.column !== columnName) {
-      return null;
-    }
-    if (sortConfig.direction === 'asc') {
-      return <ArrowUp className="h-4 w-4 ml-1" />;
-    }
-    return <ArrowDown className="h-4 w-4 ml-1" />;
-  };
-
   return (
     <div className="space-y-6">
       {toastMessage && (
@@ -1025,61 +972,26 @@ const Gastos = ({ onDataChanged }) => {
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('fecha')}
-                  >
-                    <div className="flex items-center">
-                      Fecha {renderSortIcon('fecha')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('concepto')}
-                  >
-                    <div className="flex items-center">
-                      Concepto {renderSortIcon('concepto')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Concepto
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('usuario')}
-                  >
-                    <div className="flex items-center">
-                      Usuario {renderSortIcon('usuario')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Usuario
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('tipoMovimiento')}
-                  >
-                    <div className="flex items-center">
-                      Tipo de movimiento {renderSortIcon('tipoMovimiento')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tipo de movimiento
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('tipoDeCambio')}
-                  >
-                    <div className="flex items-center">
-                      Tipo de cambio {renderSortIcon('tipoDeCambio')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tipo de cambio
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('montoARS')}
-                  >
-                    <div className="flex items-center">
-                      Monto ARS {renderSortIcon('montoARS')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Monto ARS
                   </th>
-                  <th
-                    className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('montoUSD')}
-                  >
-                    <div className="flex items-center">
-                      Monto USD {renderSortIcon('montoUSD')}
-                    </div>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Monto USD
                   </th>
                   <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -1224,4 +1136,3 @@ const Gastos = ({ onDataChanged }) => {
 };
 
 export default Gastos;
-```
