@@ -187,6 +187,195 @@ export default function GastosBreakdownChart({
       </div>
     );
   };
+k'use client';
+
+import React, { useMemo } from 'react';
+
+const MODE_CONFIG = {
+  usuario: {
+    key: 'byUsuario',
+    label: 'usuario',
+    title: 'por usuario',
+  },
+  tipo: {
+    key: 'byTipo',
+    label: 'tipo',
+    title: 'por tipo',
+  },
+};
+
+const COLOR_PALETTE = [
+  '#2563eb',
+  '#10b981',
+  '#f97316',
+  '#ef4444',
+  '#8b5cf6',
+  '#14b8a6',
+  '#f59e0b',
+  '#6366f1',
+  '#ec4899',
+  '#0ea5e9',
+  '#22c55e',
+  '#eab308',
+  '#a855f7',
+];
+
+const DEFAULT_FORMATTER = (value) => {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
+
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(safeValue);
+};
+
+function useCategoryColors(categories) {
+  return useMemo(() => {
+    if (!Array.isArray(categories)) {
+      return {};
+    }
+
+    return categories.reduce((colorMap, category, index) => {
+      const paletteIndex = index % COLOR_PALETTE.length;
+      colorMap[category] = COLOR_PALETTE[paletteIndex];
+      return colorMap;
+    }, {});
+  }, [categories]);
+}
+
+function formatAxisValue(formatMoney, value) {
+  if (!value) {
+    return formatMoney(0);
+  }
+
+  return formatMoney(value);
+}
+
+export default function GastosBreakdownChart({
+  data = [],
+  mode = 'usuario',
+  onModeChange,
+  formatMoney = DEFAULT_FORMATTER,
+  isLoading = false,
+}) {
+  const modeConfig = MODE_CONFIG[mode] ?? MODE_CONFIG.usuario;
+  const breakdownKey = modeConfig.key;
+
+  const chartMonths = useMemo(() => {
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data.map((month) => ({
+      ...month,
+      breakdown: month?.[breakdownKey] ?? {},
+    }));
+  }, [data, breakdownKey]);
+
+  const allCategories = useMemo(() => {
+    const categorySet = new Set();
+
+    chartMonths.forEach((month) => {
+      const breakdown = month.breakdown;
+
+      if (!breakdown || typeof breakdown !== 'object') {
+        return;
+      }
+
+      Object.keys(breakdown).forEach((category) => {
+        categorySet.add(category);
+      });
+    });
+
+    return Array.from(categorySet);
+  }, [chartMonths]);
+
+  const categoryColors = useCategoryColors(allCategories);
+
+  const maxValue = useMemo(() => {
+    return chartMonths.reduce((globalMax, month) => {
+      const breakdown = month?.breakdown ?? {};
+
+      if (!breakdown || typeof breakdown !== 'object') {
+        return globalMax;
+      }
+
+      const monthMax = Object.values(breakdown).reduce((monthMaxValue, rawValue) => {
+        const numericValue = Number(rawValue);
+
+        if (!Number.isFinite(numericValue) || numericValue <= 0) {
+          return monthMaxValue;
+        }
+
+        return numericValue > monthMaxValue ? numericValue : monthMaxValue;
+      }, 0);
+
+      return monthMax > globalMax ? monthMax : globalMax;
+    }, 0);
+  }, [chartMonths]);
+
+  const axisMarks = useMemo(() => {
+    if (!maxValue) {
+      return [];
+    }
+
+    const steps = 4;
+    const rawStep = maxValue / steps;
+    const magnitude = 10 ** Math.floor(Math.log10(rawStep || 1));
+    const normalized = rawStep / magnitude;
+    let niceNormalized;
+
+    if (normalized <= 1) {
+      niceNormalized = 1;
+    } else if (normalized <= 2) {
+      niceNormalized = 2;
+    } else if (normalized <= 5) {
+      niceNormalized = 5;
+    } else {
+      niceNormalized = 10;
+    }
+
+    const stepValue = niceNormalized * magnitude;
+    let topValue = stepValue * steps;
+
+    if (topValue < maxValue) {
+      topValue += stepValue;
+    }
+
+    const marks = [];
+
+    for (let value = 0; value <= topValue + stepValue / 2; value += stepValue) {
+      marks.push(Math.round(value));
+    }
+
+    return marks;
+  }, [maxValue]);
+
+  const renderLegend = () => {
+    if (allCategories.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
+        {allCategories.map((category) => (
+          <div key={category} className="flex items-center gap-2">
+            <span
+              className="h-3 w-3 rounded-sm"
+              style={{ backgroundColor: categoryColors[category] }}
+              aria-hidden
+            />
+            <span className="truncate" title={category}>
+              {category}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const renderChart = () => {
     if (isLoading) {
@@ -245,7 +434,8 @@ export default function GastosBreakdownChart({
                             return (
                               <div
                                 key={`${month.period}-${category}`}
-                                className="flex-1 flex items-end justify-center rounded-t-md text-[10px] font-semibold text-white"
+                                // Se añaden las clases `relative` y `flex-col` para posicionar la etiqueta
+                                className="flex-1 relative flex flex-col items-center justify-end rounded-t-md text-[10px] font-semibold text-white"
                                 style={{
                                   backgroundColor: categoryColors[category],
                                   height: `${heightPercent}%`,
@@ -254,9 +444,18 @@ export default function GastosBreakdownChart({
                                 title={`${category}: ${formatMoney(value)}`}
                                 aria-label={`${category}: ${formatMoney(value)}`}
                               >
-                                {heightPercent > 18 && (
-                                  <span className="px-1 drop-shadow-sm">{formatMoney(value)}</span>
-                                )}
+                                {
+                                  // Lógica para mostrar la etiqueta del monto
+                                  heightPercent > 18 ? (
+                                    // Muestra el monto dentro de la barra si es lo suficientemente alta
+                                    <span className="px-1 drop-shadow-sm">{formatMoney(value)}</span>
+                                  ) : (
+                                    // Muestra el monto por encima de la barra si es demasiado corta
+                                    <span className="absolute -top-4 text-xs font-normal text-gray-700">
+                                      {formatMoney(value)}
+                                    </span>
+                                  )
+                                }
                               </div>
                             );
                           })}
