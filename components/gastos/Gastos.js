@@ -1217,4 +1217,3 @@ const Gastos = ({ onDataChanged }) => {
 };
 
 export default Gastos;
-```
