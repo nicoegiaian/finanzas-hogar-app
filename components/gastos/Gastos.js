@@ -1,10 +1,3 @@
-Hola. Con gusto te ayudo a agregar la funcionalidad de ordenamiento a la tabla de gastos. He modificado el archivo `Gastos.js` para incluir un nuevo estado de ordenamiento y una función para manejar el clic en los encabezados de las columnas.
-
-Ahora, puedes hacer clic en cualquier encabezado de las columnas **Fecha**, **Concepto**, **Usuario**, **Tipo de movimiento**, **Monto ARS** y **Monto USD** para ordenar la tabla de forma ascendente o descendente. He añadido un ícono de flecha al lado del título de la columna para indicar el estado de ordenación actual.
-
-Aquí tienes el archivo completo con esta nueva característica:
-
-```jsx
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
