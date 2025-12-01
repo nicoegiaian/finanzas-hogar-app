@@ -29,12 +29,46 @@ export default function FinanzasApp() {
   const [financeError, setFinanceError] = useState(null);
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
 
+  // ESTOS BLOQUES DEBEN IR PRIMERO PARA EVITAR EL 'Cannot access 'M' before initialization'
+  
+  // COMIENZA LÍNEA 41 del archivo anterior (MOVIDO ARRIBA)
+  const handleMonthChange = useCallback(
+    (value) => {
+      const normalized = normalizePeriod(value);
+      setSelectedMonth(normalized ?? currentPeriod);
+    },
+    [currentPeriod],
+  );
+
+  // COMIENZA LÍNEA 48 del archivo anterior (MOVIDO ARRIBA)
+  const monthOptions = useMemo(() => {
+    const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos, ahorros }));
+    const normalizedCurrent = normalizePeriod(currentPeriod);
+
+    if (normalizedCurrent) {
+      periodSet.add(normalizedCurrent);
+    }
+
+    const normalizedSelected = normalizePeriod(selectedMonth);
+
+    if (normalizedSelected) {
+      periodSet.add(normalizedSelected);
+    }
+
+    return sortPeriodsDesc(Array.from(periodSet));
+  }, [ingresos, gastos, ahorros, currentPeriod, selectedMonth]);
+
+
+  // COMIENZA LÍNEA 17 del archivo anterior (MOVIDO AQUÍ)
+  // Ahora commonProps puede acceder a handleMonthChange y monthOptions
   const commonProps = {
     selectedMonth,
     onMonthChange: handleMonthChange,
     monthOptions,
   };
 
+  // El resto del código de la aplicación puede seguir en su orden.
+  // ...
   const inversionesData = useMemo(
     () => [
       { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.5, cambio: 2.15, cambioPorc: 0.75 },
@@ -74,31 +108,9 @@ export default function FinanzasApp() {
     loadFinanceData();
   }, [loadFinanceData]);
 
-  const handleMonthChange = useCallback(
-    (value) => {
-      const normalized = normalizePeriod(value);
-      setSelectedMonth(normalized ?? currentPeriod);
-    },
-    [currentPeriod],
-  );
-
-  const monthOptions = useMemo(() => {
-    const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos, ahorros }));
-    const normalizedCurrent = normalizePeriod(currentPeriod);
-
-    if (normalizedCurrent) {
-      periodSet.add(normalizedCurrent);
-    }
-
-    const normalizedSelected = normalizePeriod(selectedMonth);
-
-    if (normalizedSelected) {
-      periodSet.add(normalizedSelected);
-    }
-
-    return sortPeriodsDesc(Array.from(periodSet));
-  }, [ingresos, gastos, ahorros, currentPeriod, selectedMonth]);
-
+  // Las funciones de cálculo (useMemo) también pueden ir aquí,
+  // ya que dependen de los estados de datos (ingresos, gastos, ahorros)
+  // que ya están definidos y no causan problemas de inicialización.
   const { ingresosARS, gastosARS, ahorroDelMes } = useMemo(
     () => calculateMonthlyTotals(ingresos, gastos, selectedMonth),
     [ingresos, gastos, selectedMonth],
@@ -116,7 +128,9 @@ export default function FinanzasApp() {
   const refreshFinanceData = useCallback(() => {
     loadFinanceData();
   }, [loadFinanceData]);
-
+  
+  // ... (El resto del componente)
+  
   const formatMoney = (amount) => {
     const numericAmount = Number(amount);
     const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
@@ -142,6 +156,7 @@ export default function FinanzasApp() {
     const sectionComponents = {
       dashboard: (
         <Dashboard
+          // Aquí se usan commonProps, pero también se pasan directamente
           {...commonProps}  
           selectedMonth={selectedMonth}
           setSelectedMonth={handleMonthChange}
@@ -264,3 +279,5 @@ export default function FinanzasApp() {
     </div>
   );
 }
+
+// END of FinanzasApp.js
