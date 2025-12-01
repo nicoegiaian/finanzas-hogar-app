@@ -9,6 +9,9 @@ import {
   getCurrentPeriod,
   normalizePeriod,
   sortPeriodsDesc,
+  // AÑADIR estas dos funciones:
+  getPreviousPeriod,
+  adjustDateForCopy,
 } from '../../lib/financeUtils';
 
 const createInitialFormState = () => ({
@@ -431,76 +434,86 @@ const Gastos = ({ onDataChanged, selectedMonth, onMonthChange, monthOptions = []
     onMonthChange(event.target.value);
   };
 
-  const handleCopyPreviousMonth = async () => {
-    const normalizedSelected = normalizePeriod(selectedMonth);
+  // nicoegiaian/finanzas-hogar-app/finanzas-hogar-app-32c82672b0e069102ffacbfef6de2de734a85cfe/components/gastos/Gastos.js (Alrededor de la línea 104)
 
-    if (!normalizedSelected) {
-      setToastMessage('Seleccioná un periodo válido.');
+const handleCopyPreviousMonth = async () => {
+  // 1. Definir periodos:
+  // selectedMonth es el mes de destino (ej: Dic 2025)
+  const targetPeriod = selectedMonth;
+  // sourcePeriod es el mes anterior (ej: Nov 2025)
+  const sourcePeriod = getPreviousPeriod(targetPeriod);
+  
+  // Validaciones
+  if (!targetPeriod) {
+      setToastMessage({ type: 'error', text: 'No se puede determinar el mes de destino.' });
       return;
-    }
+  }
 
-    const nextPeriod = getNextPeriod(normalizedSelected);
+  // 2. Comprobar si el mes de destino ya tiene gastos (Debe estar vacío)
+  const isTargetEmpty = filteredGastos.length === 0;
 
-    if (!nextPeriod) {
-      setToastMessage('No pudimos determinar el próximo periodo.');
+  if (!isTargetEmpty) {
+      setToastMessage({ type: 'error', text: `El mes de ${formatPeriodLabel(targetPeriod)} ya tiene ${filteredGastos.length} registros. La copia solo se permite en meses vacíos.` });
       return;
-    }
+  }
 
-    const recordsToCopy = gastos.filter((gasto) => {
-      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
-      return period === normalizedSelected;
-    });
+  // 3. Obtener los gastos del mes anterior (sourcePeriod)
+  const sourceGastos = gastos.filter(
+      (gasto) => normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes) === normalizePeriod(sourcePeriod)
+  );
 
-    if (recordsToCopy.length === 0) {
-      setToastMessage('No hay movimientos en el periodo seleccionado.');
+  if (sourceGastos.length === 0) {
+      setToastMessage({ type: 'error', text: `No se encontraron gastos en el mes anterior: ${formatPeriodLabel(sourcePeriod)}.` });
       return;
-    }
+  }
 
-    setIsCopying(true);
+  if (!window.confirm(`Se copiarán ${sourceGastos.length} gastos de ${formatPeriodLabel(sourcePeriod)} a ${formatPeriodLabel(targetPeriod)}. ¿Estás seguro?`)) {
+      return;
+  }
 
-    try {
-      const createdGastos = await Promise.all(
-        recordsToCopy.map(async (gasto) => {
-          const newFecha = buildDateForPeriod(nextPeriod, gasto?.fecha) ?? `${nextPeriod}-01`;
-          const montoARS = parseAmount(gasto?.montoARS ?? gasto?.monto_ars);
-          const montoUSD = parseAmount(gasto?.montoUSD ?? gasto?.monto_usd);
-          const tipoCambio = getTrimmedValue(gasto?.tipoDeCambio ?? gasto?.tipo_de_cambio);
+  setIsCopying(true);
+  setFormError(null);
 
-          const payload = {
-            fecha: newFecha,
-            concepto: getTrimmedValue(gasto?.concepto),
-            usuario: getTrimmedValue(gasto?.usuario),
-            tipo_movimiento: getTrimmedValue(gasto?.tipoMovimiento ?? gasto?.tipo_movimiento),
-            tipo_de_cambio: tipoCambio || null,
-            monto_ars: montoARS ?? 0,
-            monto_usd: montoUSD,
+  try {
+      const newGastos = sourceGastos.map((gasto) => {
+          // Ajustar la fecha +1 mes (ej: 15/11/2025 -> 15/12/2025)
+          const newDate = adjustDateForCopy(gasto.fecha, 1); 
+
+          // Devolver un nuevo objeto sin el ID
+          return {
+              concepto: gasto.concepto,
+              usuario: gasto.usuario,
+              tipoMovimiento: gasto.tipoMovimiento,
+              montoARS: gasto.montoARS,
+              montoUSD: gasto.montoUSD,
+              fecha: newDate, 
           };
+      });
 
-          const newGasto = await createGasto(payload);
-          return normalizeGasto(newGasto);
-        }),
-      );
-
-      setGastos((previous) => sortByFechaDesc([...createdGastos, ...previous]));
-
-      if (typeof onDataChanged === 'function') {
-        onDataChanged();
+      // Inserción Batch
+      const creationPromises = newGastos.map((gasto) => createGasto(gasto));
+      const results = await Promise.all(creationPromises);
+      
+      if (results.some(res => res.error)) {
+           throw new Error('Ocurrió un error al copiar uno o más gastos.');
       }
 
-      onMonthChange(nextPeriod);
-      
-      setToastMessage(
-        createdGastos.length === 1
-          ? 'Se copió 1 gasto al mes siguiente.'
-          : `Se copiaron ${createdGastos.length} gastos al mes siguiente.`,
-      );
-    } catch (error) {
-      console.error('Error al copiar gastos al mes siguiente', error);
-      setToastMessage(error?.message ?? 'No pudimos copiar los gastos al mes siguiente.');
-    } finally {
+      setToastMessage({
+          type: 'success',
+          text: `¡Copia exitosa! ${newGastos.length} gastos copiados de ${formatPeriodLabel(sourcePeriod)} a ${formatPeriodLabel(targetPeriod)}.`,
+      });
+
+      // Recargar los datos para ver los nuevos registros
+      onDataChanged(); 
+
+  } catch (error) {
+      console.error('Error al copiar gastos:', error);
+      setFormError(error?.message || 'Error desconocido al copiar los gastos.');
+      setToastMessage({ type: 'error', text: 'Error al copiar el mes anterior.' });
+  } finally {
       setIsCopying(false);
-    }
-  };
+  }
+};
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
