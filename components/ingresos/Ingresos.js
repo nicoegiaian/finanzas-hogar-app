@@ -250,7 +250,7 @@ const buildDateForPeriod = (period, referenceDate) => {
 const getTrimmedValue = (value, fallback = '') =>
   typeof value === 'string' ? value.trim() : fallback;
 
-const Ingresos = ({ onDataChanged }) => {
+const Ingresos = ({ onDataChanged, selectedMonth, onMonthChange, monthOptions = [] }) => {
   const [ingresos, setIngresos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -258,7 +258,6 @@ const Ingresos = ({ onDataChanged }) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(createInitialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentPeriod());
   const [isCopying, setIsCopying] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [editingIngresoId, setEditingIngresoId] = useState(null);
@@ -295,32 +294,6 @@ const Ingresos = ({ onDataChanged }) => {
     return () => clearTimeout(timeoutId);
   }, [toastMessage]);
 
-  const defaultPeriod = useMemo(() => getCurrentPeriod(), []);
-
-  const monthOptions = useMemo(() => {
-    const periods = new Set();
-
-    ingresos.forEach((ingreso) => {
-      const period = normalizePeriod(ingreso?.fecha ?? ingreso?.periodo ?? ingreso?.mes);
-
-      if (period) {
-        periods.add(period);
-      }
-    });
-
-    const normalizedSelected = normalizePeriod(selectedMonth);
-    if (normalizedSelected) {
-      periods.add(normalizedSelected);
-    }
-
-    const normalizedDefault = normalizePeriod(defaultPeriod);
-    if (normalizedDefault) {
-      periods.add(normalizedDefault);
-    }
-
-    const options = sortPeriodsDesc(Array.from(periods));
-    return options.length > 0 ? options : [defaultPeriod];
-  }, [ingresos, selectedMonth, defaultPeriod]);
 
   const filteredIngresos = useMemo(() => {
     const normalized = normalizePeriod(selectedMonth);
@@ -333,11 +306,11 @@ const Ingresos = ({ onDataChanged }) => {
       const period = normalizePeriod(ingreso?.fecha ?? ingreso?.periodo ?? ingreso?.mes);
       return period === normalized;
     });
-  }, [ingresos, selectedMonth]);
+  }, [ingresos, selectedMonth]); // Ahora depende del prop selectedMonth
 
   const handleMonthChange = (event) => {
-    const normalized = normalizePeriod(event.target.value);
-    setSelectedMonth(normalized ?? defaultPeriod ?? '');
+    // Llama a la función del componente padre para cambiar el mes
+    onMonthChange(event.target.value);
   };
 
   const handleCopyPreviousMonth = async () => {
@@ -395,7 +368,7 @@ const Ingresos = ({ onDataChanged }) => {
         onDataChanged();
       }
 
-      setSelectedMonth(nextPeriod);
+      onMonthChange(nextPeriod);
 
       setToastMessage(
         createdIngresos.length === 1

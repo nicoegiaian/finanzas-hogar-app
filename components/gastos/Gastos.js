@@ -321,7 +321,7 @@ const buildDateForPeriod = (period, referenceDate) => {
 const getTrimmedValue = (value, fallback = '') =>
   typeof value === 'string' ? value.trim() : fallback;
 
-const Gastos = ({ onDataChanged }) => {
+const Gastos = ({ onDataChanged, selectedMonth, onMonthChange, monthOptions = [] }) => {
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -332,14 +332,12 @@ const Gastos = ({ onDataChanged }) => {
   const [isConceptDropdownVisible, setIsConceptDropdownVisible] = useState(false);
   const conceptDropdownHideTimeoutRef = useRef(null);
   const conceptInputRef = useRef(null);
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentPeriod());
   const [isCopying, setIsCopying] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [editingGastoId, setEditingGastoId] = useState(null);
   const [editingGastoValues, setEditingGastoValues] = useState(() => createInitialEditingState());
   const [isUpdatingGasto, setIsUpdatingGasto] = useState(false);
   const [deletingGastoId, setDeletingGastoId] = useState(null);
-  // Nuevo estado para el ordenamiento
   const [sortConfig, setSortConfig] = useState({ column: 'fecha', direction: 'desc' });
 
   const visibleConceptOptions = useMemo(() => {
@@ -382,32 +380,6 @@ const Gastos = ({ onDataChanged }) => {
     return () => clearTimeout(timeoutId);
   }, [toastMessage]);
 
-  const defaultPeriod = useMemo(() => getCurrentPeriod(), []);
-
-  const monthOptions = useMemo(() => {
-    const periods = new Set();
-
-    gastos.forEach((gasto) => {
-      const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
-
-      if (period) {
-        periods.add(period);
-      }
-    });
-
-    const normalizedSelected = normalizePeriod(selectedMonth);
-    if (normalizedSelected) {
-      periods.add(normalizedSelected);
-    }
-
-    const normalizedDefault = normalizePeriod(defaultPeriod);
-    if (normalizedDefault) {
-      periods.add(normalizedDefault);
-    }
-
-    const options = sortPeriodsDesc(Array.from(periods));
-    return options.length > 0 ? options : [defaultPeriod];
-  }, [gastos, selectedMonth, defaultPeriod]);
 
   const filteredGastos = useMemo(() => {
     const normalized = normalizePeriod(selectedMonth);
@@ -456,8 +428,7 @@ const Gastos = ({ onDataChanged }) => {
   };
 
   const handleMonthChange = (event) => {
-    const normalized = normalizePeriod(event.target.value);
-    setSelectedMonth(normalized ?? defaultPeriod ?? '');
+    onMonthChange(event.target.value);
   };
 
   const handleCopyPreviousMonth = async () => {
@@ -516,8 +487,8 @@ const Gastos = ({ onDataChanged }) => {
         onDataChanged();
       }
 
-      setSelectedMonth(nextPeriod);
-
+      onMonthChange(nextPeriod);
+      
       setToastMessage(
         createdGastos.length === 1
           ? 'Se copió 1 gasto al mes siguiente.'

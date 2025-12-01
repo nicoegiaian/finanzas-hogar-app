@@ -29,6 +29,12 @@ export default function FinanzasApp() {
   const [financeError, setFinanceError] = useState(null);
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
 
+  const commonProps = {
+    selectedMonth,
+    onMonthChange: handleMonthChange,
+    monthOptions,
+  };
+
   const inversionesData = useMemo(
     () => [
       { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.5, cambio: 2.15, cambioPorc: 0.75 },
@@ -136,6 +142,7 @@ export default function FinanzasApp() {
     const sectionComponents = {
       dashboard: (
         <Dashboard
+          {...commonProps}  
           selectedMonth={selectedMonth}
           setSelectedMonth={handleMonthChange}
           monthOptions={monthOptions}
@@ -153,8 +160,8 @@ export default function FinanzasApp() {
           gastos={gastos}
         />
       ),
-      ingresos: <Ingresos onDataChanged={refreshFinanceData} />,
-      gastos: <Gastos onDataChanged={refreshFinanceData} />,
+      ingresos: <Ingresos {...commonProps} onDataChanged={refreshFinanceData} />,
+      gastos: <Gastos {...commonProps} onDataChanged={refreshFinanceData} />,
       inversiones: <Inversiones inversiones={inversionesData} formatMoney={formatMoney} />,
       usuarios: (
         <div className="text-center py-12">
