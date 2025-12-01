@@ -9,6 +9,9 @@ import {
   getCurrentPeriod,
   normalizePeriod,
   sortPeriodsDesc,
+  // AÑADIR/ACTUALIZAR:
+  getPreviousPeriod,
+  adjustDateForCopy,
 } from '../../lib/financeUtils';
 
 const createInitialFormState = () => ({
@@ -313,75 +316,92 @@ const Ingresos = ({ onDataChanged, selectedMonth, onMonthChange, monthOptions = 
     onMonthChange(event.target.value);
   };
 
-  const handleCopyPreviousMonth = async () => {
-    const normalizedSelected = normalizePeriod(selectedMonth);
+  // nicoegiaian/finanzas-hogar-app/finanzas-hogar-app-32c82672b0e069102ffacbfef6de2de734a85cfe/components/ingresos/Ingresos.js (Alrededor de la línea 101)
 
-    if (!normalizedSelected) {
-      setToastMessage('Seleccioná un periodo válido.');
+// Ingresos.js (alrededor de la línea 101)
+
+const handleCopyPreviousMonth = async () => {
+  // 1. Definir periodos:
+  // targetPeriod es el mes seleccionado (Ej: Dic 2025)
+  const targetPeriod = selectedMonth; 
+  // sourcePeriod es el mes anterior (Ej: Nov 2025)
+  const sourcePeriod = getPreviousPeriod(targetPeriod); 
+  
+  // 2. Validaciones de destino
+  if (!targetPeriod) {
+      setToastMessage('Seleccioná un periodo válido de destino.');
       return;
-    }
+  }
 
-    const nextPeriod = getNextPeriod(normalizedSelected);
+  // Comprobar si el mes de destino (el seleccionado) ya tiene movimientos
+  const isTargetEmpty = filteredIngresos.length === 0;
 
-    if (!nextPeriod) {
-      setToastMessage('No pudimos determinar el próximo periodo.');
+  if (!isTargetEmpty) {
+      setToastMessage(`El mes de ${formatPeriodLabel(targetPeriod)} ya tiene ${filteredIngresos.length} registros. Solo se permite copiar en meses vacíos.`);
       return;
-    }
+  }
 
-    const recordsToCopy = ingresos.filter((ingreso) => {
-      const period = normalizePeriod(ingreso?.fecha ?? ingreso?.periodo ?? ingreso?.mes);
-      return period === normalizedSelected;
-    });
+  // 3. Obtener los ingresos del mes anterior (sourcePeriod)
+  const sourceIngresos = ingresos.filter(
+      (ingreso) => normalizePeriod(ingreso?.fecha ?? ingreso?.periodo ?? ingreso?.mes) === normalizePeriod(sourcePeriod)
+  );
 
-    if (recordsToCopy.length === 0) {
-      setToastMessage('No hay movimientos en el periodo seleccionado.');
+  if (sourceIngresos.length === 0) {
+      // Mensaje de error CORRECTO para cuando el mes anterior está vacío
+      setToastMessage(`No se encontraron ingresos en el mes anterior: ${formatPeriodLabel(sourcePeriod)}.`);
       return;
-    }
+  }
 
-    setIsCopying(true);
+  if (!window.confirm(`Se copiarán ${sourceIngresos.length} ingresos de ${formatPeriodLabel(sourcePeriod)} a ${formatPeriodLabel(targetPeriod)}, ajustando las fechas +1 mes. ¿Estás seguro?`)) {
+      return;
+  }
 
-    try {
+  setIsCopying(true);
+  setFormError(null);
+
+  try {
       const createdIngresos = await Promise.all(
-        recordsToCopy.map(async (ingreso) => {
-          const newFecha = buildDateForPeriod(nextPeriod, ingreso?.fecha) ?? `${nextPeriod}-01`;
-          const montoARS = parseAmount(ingreso?.montoARS ?? ingreso?.monto_ars);
-          const montoUSD = parseAmount(ingreso?.montoUSD ?? ingreso?.monto_usd);
+          sourceIngresos.map(async (ingreso) => {
+              // Aumenta la fecha en 1 mes
+              const newFecha = adjustDateForCopy(ingreso.fecha, 1);
+              
+              const montoARS = parseAmount(ingreso?.montoARS ?? ingreso?.monto_ars);
+              const montoUSD = parseAmount(ingreso?.montoUSD ?? ingreso?.monto_usd);
 
-          const payload = {
-            fecha: newFecha,
-            concepto: getTrimmedValue(ingreso?.concepto),
-            usuario: getTrimmedValue(ingreso?.usuario),
-            tipo_movimiento: getTrimmedValue(ingreso?.tipoMovimiento ?? ingreso?.tipo_movimiento),
-            tipo_de_cambio: getTrimmedValue(ingreso?.tipoDeCambio ?? ingreso?.tipo_de_cambio),
-            monto_ars: montoARS ?? 0,
-            monto_usd: montoUSD,
-          };
+              const payload = {
+                  fecha: newFecha,
+                  concepto: getTrimmedValue(ingreso?.concepto),
+                  usuario: getTrimmedValue(ingreso?.usuario),
+                  tipo_movimiento: getTrimmedValue(ingreso?.tipoMovimiento ?? ingreso?.tipo_movimiento),
+                  tipo_de_cambio: getTrimmedValue(ingreso?.tipoDeCambio ?? ingreso?.tipo_de_cambio),
+                  monto_ars: montoARS ?? 0,
+                  monto_usd: montoUSD,
+              };
 
-          const newIngreso = await createIngreso(payload);
-          return normalizeIngreso(newIngreso);
-        }),
+              // Enviamos el payload SIN el ID, para que Supabase cree un nuevo registro
+              const newIngreso = await createIngreso(payload);
+              return normalizeIngreso(newIngreso);
+          }),
       );
 
       setIngresos((previous) => sortByFechaDesc([...createdIngresos, ...previous]));
 
       if (typeof onDataChanged === 'function') {
-        onDataChanged();
+          onDataChanged(); // Forzamos recarga de todos los datos
       }
-
-      onMonthChange(nextPeriod);
-
+      
       setToastMessage(
-        createdIngresos.length === 1
-          ? 'Se copió 1 ingreso al mes siguiente.'
-          : `Se copiaron ${createdIngresos.length} ingresos al mes siguiente.`,
+          createdIngresos.length === 1
+              ? 'Se copió 1 ingreso al mes seleccionado.'
+              : `Se copiaron ${createdIngresos.length} ingresos al mes seleccionado.`,
       );
-    } catch (error) {
-      console.error('Error al copiar ingresos al mes siguiente', error);
-      setToastMessage(error?.message ?? 'No pudimos copiar los ingresos al mes siguiente.');
-    } finally {
+  } catch (error) {
+      console.error('Error al copiar ingresos:', error);
+      setToastMessage(error?.message ?? 'No pudimos copiar los ingresos al mes seleccionado.');
+  } finally {
       setIsCopying(false);
-    }
-  };
+  }
+};
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
