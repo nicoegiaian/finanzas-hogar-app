@@ -20,7 +20,7 @@ import {
 export default function FinanzasApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Empezar cerrado en mobile
   const [activeSection, setActiveSection] = useState('dashboard');
-  const currentPeriod = useMemo(() => getCurrentPeriod(), []);
+  const currentPeriod = getCurrentPeriod();
   const [selectedMonth, setSelectedMonth] = useState(currentPeriod);
   const [ingresos, setIngresos] = useState([]);
   const [gastos, setGastos] = useState([]);
