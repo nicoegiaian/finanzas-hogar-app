@@ -6,28 +6,26 @@ import { Menu, X, Home, TrendingUp, DollarSign, PieChart, Users, Settings } from
 import Ingresos from './ingresos/Ingresos';
 import Gastos from './gastos/Gastos';
 import Dashboard from './dashboard/Dashboard';
-import Inversiones from './inversiones/Inversiones'; // Se mantiene tu componente
-// ACTUALIZACIÓN: Cambiar fetchAhorros por fetchActivos
+import Inversiones from './inversiones/Inversiones';
+// TAREA 1.2: Cambiar fetchAhorros por fetchActivos
 import { fetchIngresos, fetchGastos, fetchActivos } from '../lib/supabaseClient';
-// NUEVO: Importar servicio de cotizaciones
+// TAREA 2.1: Importar servicio de cotizaciones
 import { fetchStockPrice, getUSDExchangeRate } from '../lib/externalDataService';
 import {
   calculateMonthlyTotals,
-  // REMOVIDO: sumAhorrosBeforePeriod
+  // TAREA 1.2: sumAhorrosBeforePeriod ya no se usa aquí.
   collectPeriodsFromRecords,
   sortPeriodsDesc,
   getCurrentPeriod,
   normalizePeriod,
 } from '../lib/financeUtils';
 
-// === FUNCIÓN DE CÁLCULO DE PATRIMONIO NETO ===
+// === FUNCIÓN DE CÁLCULO DE PATRIMONIO NETO (TAREA 2.2) ===
 const calculateNetWorth = async (activos) => {
-    // 1. Obtener tasa de conversión (Asumimos Dólar MEP/Blue)
     const rate = getUSDExchangeRate();
     let totalNetWorth = 0;
-    const pricingCache = {}; // Cache para evitar llamadas duplicadas a la API
+    const pricingCache = {}; 
 
-    // Helper para obtener el precio con cache
     const getPrice = async (ticker) => {
         if (!pricingCache[ticker]) {
             pricingCache[ticker] = await fetchStockPrice(ticker); 
@@ -40,7 +38,7 @@ const calculateNetWorth = async (activos) => {
         if (quantity <= 0) continue;
 
         let valueInARS = 0;
-        const ticker = activo.ticker || activo.moneda; // Usar ticker si existe, sino la moneda
+        const ticker = activo.ticker || activo.moneda;
 
         switch (activo.moneda) {
             case 'ARS':
@@ -49,20 +47,16 @@ const calculateNetWorth = async (activos) => {
             case 'USD':
                 valueInARS = quantity * rate;
                 break;
-            default: // Moneda es un Ticker
+            default: 
                 if (ticker) {
                     const price = await getPrice(ticker); 
                     
-                    // Lógica de conversión basada en tipo de activo
                     if (activo.moneda === 'BTC' || activo.tipo_activo?.includes('CEDEAR')) {
-                        // Cripto y CEDEARs se valoran en USD y se convierten a ARS
                         valueInARS = quantity * price * rate;
                     } else {
-                        // Acciones locales (ej. GGAL), se asume precio de API en ARS
                         valueInARS = quantity * price;
                     }
                 } else {
-                    // Fallback para activos sin ticker/moneda clara
                     valueInARS = 0;
                 }
                 break;
@@ -77,15 +71,15 @@ const calculateNetWorth = async (activos) => {
 
 
 export default function FinanzasApp() {
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Empezar cerrado en mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
   const currentPeriod = getCurrentPeriod();
   const [selectedMonth, setSelectedMonth] = useState(currentPeriod);
   const [ingresos, setIngresos] = useState([]);
   const [gastos, setGastos] = useState([]);
   
-  // CAMBIO: Eliminar [ahorros, setAhorros]
-  // NUEVOS ESTADOS:
+  // TAREA 1.2/2.2: Nuevos estados para Activos y Patrimonio Neto
+  // Se elimina [ahorros, setAhorros] de la línea 27 original
   const [activos, setActivos] = useState([]);
   const [patrimonioNeto, setPatrimonioNeto] = useState(0);
 
@@ -93,24 +87,20 @@ export default function FinanzasApp() {
   const [financeError, setFinanceError] = useState(null);
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
   
-  // REMOVIDO: inversionesData (los datos reales vendrán de la tabla 'activos')
-
-  // CÁLCULOS PRINCIPALES DEL MES
+  // Tarea 2.2: Cálculos base del mes
   const { ingresosARS, gastosARS, ahorroDelMes } = useMemo(
     () => calculateMonthlyTotals(ingresos, gastos, selectedMonth),
     [ingresos, gastos, selectedMonth],
   );
   
-  // === CÁLCULO ASÍNCRONO DEL PATRIMONIO NETO ===
+  // TAREA 2.2: Lógica de Patrimonio Neto (Net Worth)
   const runNetWorthCalculation = useCallback(async () => {
-    // Solo calcular si hay activos cargados
     if (activos.length > 0) {
       try {
         const netWorth = await calculateNetWorth(activos);
         setPatrimonioNeto(netWorth);
       } catch (error) {
         console.error("Error al calcular el Patrimonio Neto:", error);
-        // Si hay un error en la API, mostramos 0 para no bloquear la app
         setPatrimonioNeto(0); 
       }
     } else {
@@ -118,26 +108,24 @@ export default function FinanzasApp() {
     }
   }, [activos]);
 
-  // Ejecutar el cálculo del Patrimonio Neto cada vez que los activos cambian
   useEffect(() => {
       runNetWorthCalculation();
   }, [runNetWorthCalculation]);
 
+  // TAREA 1.2: Carga de datos
   const loadFinanceData = useCallback(async () => {
     setFinanceLoading(true);
     setFinanceError(null);
 
     try {
-      // ACTUALIZACIÓN: Llama a fetchActivos en lugar de fetchAhorros
       const [ingresosResponse, gastosResponse, activosResponse] = await Promise.all([
         fetchIngresos(),
         fetchGastos(),
-        fetchActivos(),
+        fetchActivos(), // TAREA 1.2
       ]);
 
       setIngresos(Array.isArray(ingresosResponse) ? ingresosResponse : []);
       setGastos(Array.isArray(gastosResponse) ? gastosResponse : []);
-      // ACTUALIZACIÓN: Almacena el resultado en 'activos'
       setActivos(Array.isArray(activosResponse) ? activosResponse : []);
       
     } catch (error) {
@@ -145,11 +133,11 @@ export default function FinanzasApp() {
       setFinanceError(error?.message ?? 'No pudimos cargar los datos financieros.');
       setIngresos([]);
       setGastos([]);
-      setActivos([]); // Resetea activos
+      setActivos([]);
     } finally {
       setFinanceLoading(false);
     }
-  }, []); // Dependencias vacías, solo se carga una vez al montar
+  }, []);
 
   useEffect(() => {
     loadFinanceData();
@@ -164,7 +152,6 @@ export default function FinanzasApp() {
   );
 
   const monthOptions = useMemo(() => {
-    // La lógica de periodos se mantiene usando solo ingresos y gastos (correcto)
     const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos }));
     const normalizedCurrent = normalizePeriod(currentPeriod);
 
@@ -214,12 +201,8 @@ export default function FinanzasApp() {
   ];
 
   const renderContent = () => {
-    // NUEVA LÓGICA DE AHORRO/PATRIMONIO:
-    // El ahorro histórico ya no se calcula con sumAhorrosBeforePeriod, sino que se infiere
-    // del Patrimonio Neto total menos el ahorro del mes actual (es un HACK temporal).
+    // TAREA 2.2: Lógica de presentación de Patrimonio en Dashboard
     const ahorroHistoricoContable = patrimonioNeto - ahorroDelMes; 
-    
-    // Métrica Objetivo (se mantiene basada en ingresos, pero ahora el ahorroActual es el Patrimonio Neto)
     const metaAhorro = 0.2;
     const ahorroObjetivo = ingresosARS * metaAhorro; 
 
@@ -232,9 +215,8 @@ export default function FinanzasApp() {
           totalIngresos={ingresosARS}
           totalGastos={gastosARS}
           ahorroDelMes={ahorroDelMes}
-          // ACTUALIZACIÓN: Pasa el Patrimonio Neto como métrica principal (el ahorro acumulado)
           ahorroHistorico={ahorroHistoricoContable} 
-          ahorroActual={patrimonioNeto} // El Patrimonio Neto es el nuevo "ahorro"
+          ahorroActual={patrimonioNeto} // Usa Patrimonio Neto
           ahorroObjetivo={ahorroObjetivo}
           metaAhorro={metaAhorro}
           isLoading={financeLoading}
@@ -247,17 +229,15 @@ export default function FinanzasApp() {
       ingresos: <Ingresos {...commonProps} onDataChanged={refreshFinanceData} />,
       gastos: <Gastos {...commonProps} onDataChanged={refreshFinanceData} />,
       inversiones: (
-        // CAMBIO: Se mantiene tu componente, pero le pasamos los activos
-        // En la Tarea 1.3 haremos que este componente muestre la lista de activos
+        // TAREA 1.3: Pasamos todas las dependencias necesarias al ABM de Activos
         <Inversiones 
           {...commonProps} 
           onDataChanged={refreshFinanceData} 
-          // NUEVO PROP: Le pasamos la lista de activos y el Patrimonio Neto total
-          activos={activos}
-          patrimonioNeto={patrimonioNeto}
+          activos={activos} // Tarea 1.3: Lista de Activos
+          patrimonioNeto={patrimonioNeto} // Tarea 2.2: Valor calculado
+          formatMoney={formatMoney} // CORRECCIÓN CLAVE: Pasa la función de formato
         />
       ),
-      // MANTENIDOS: Estas secciones se mantienen
       usuarios: (
         <div className="text-center py-12">
             <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
@@ -374,4 +354,4 @@ export default function FinanzasApp() {
       </div>
     </div>
   );
-}
+} 

@@ -55,7 +55,6 @@ const needsTicker = (tipoActivo) => {
     'Fondo Común de Inversión (FCI)',
     'Obligación Negociable (ON)',
     'Título Público',
-    'Crypto',
   ].includes(tipoActivo);
 };
 
