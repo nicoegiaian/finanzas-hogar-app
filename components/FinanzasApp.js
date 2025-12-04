@@ -6,16 +6,75 @@ import { Menu, X, Home, TrendingUp, DollarSign, PieChart, Users, Settings } from
 import Ingresos from './ingresos/Ingresos';
 import Gastos from './gastos/Gastos';
 import Dashboard from './dashboard/Dashboard';
-import Inversiones from './inversiones/Inversiones';
-import { fetchIngresos, fetchGastos, fetchAhorros } from '../lib/supabaseClient';
+import Inversiones from './inversiones/Inversiones'; // Se mantiene tu componente
+// ACTUALIZACIÓN: Cambiar fetchAhorros por fetchActivos
+import { fetchIngresos, fetchGastos, fetchActivos } from '../lib/supabaseClient';
+// NUEVO: Importar servicio de cotizaciones
+import { fetchStockPrice, getUSDExchangeRate } from '../lib/externalDataService';
 import {
   calculateMonthlyTotals,
-  sumAhorrosBeforePeriod,
+  // REMOVIDO: sumAhorrosBeforePeriod
   collectPeriodsFromRecords,
   sortPeriodsDesc,
   getCurrentPeriod,
   normalizePeriod,
 } from '../lib/financeUtils';
+
+// === FUNCIÓN DE CÁLCULO DE PATRIMONIO NETO ===
+const calculateNetWorth = async (activos) => {
+    // 1. Obtener tasa de conversión (Asumimos Dólar MEP/Blue)
+    const rate = getUSDExchangeRate();
+    let totalNetWorth = 0;
+    const pricingCache = {}; // Cache para evitar llamadas duplicadas a la API
+
+    // Helper para obtener el precio con cache
+    const getPrice = async (ticker) => {
+        if (!pricingCache[ticker]) {
+            pricingCache[ticker] = await fetchStockPrice(ticker); 
+        }
+        return pricingCache[ticker];
+    };
+
+    for (const activo of activos) {
+        const quantity = Number(activo.cantidad) || 0;
+        if (quantity <= 0) continue;
+
+        let valueInARS = 0;
+        const ticker = activo.ticker || activo.moneda; // Usar ticker si existe, sino la moneda
+
+        switch (activo.moneda) {
+            case 'ARS':
+                valueInARS = quantity;
+                break;
+            case 'USD':
+                valueInARS = quantity * rate;
+                break;
+            default: // Moneda es un Ticker
+                if (ticker) {
+                    const price = await getPrice(ticker); 
+                    
+                    // Lógica de conversión basada en tipo de activo
+                    if (activo.moneda === 'BTC' || activo.tipo_activo?.includes('CEDEAR')) {
+                        // Cripto y CEDEARs se valoran en USD y se convierten a ARS
+                        valueInARS = quantity * price * rate;
+                    } else {
+                        // Acciones locales (ej. GGAL), se asume precio de API en ARS
+                        valueInARS = quantity * price;
+                    }
+                } else {
+                    // Fallback para activos sin ticker/moneda clara
+                    valueInARS = 0;
+                }
+                break;
+        }
+
+        totalNetWorth += valueInARS;
+    }
+    
+    return totalNetWorth;
+};
+// ==========================================================
+
 
 export default function FinanzasApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Empezar cerrado en mobile
@@ -24,14 +83,78 @@ export default function FinanzasApp() {
   const [selectedMonth, setSelectedMonth] = useState(currentPeriod);
   const [ingresos, setIngresos] = useState([]);
   const [gastos, setGastos] = useState([]);
-  const [ahorros, setAhorros] = useState([]);
+  
+  // CAMBIO: Eliminar [ahorros, setAhorros]
+  // NUEVOS ESTADOS:
+  const [activos, setActivos] = useState([]);
+  const [patrimonioNeto, setPatrimonioNeto] = useState(0);
+
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState(null);
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
-
-  // ESTOS BLOQUES DEBEN IR PRIMERO PARA EVITAR EL 'Cannot access 'M' before initialization'
   
-  // COMIENZA LÍNEA 41 del archivo anterior (MOVIDO ARRIBA)
+  // REMOVIDO: inversionesData (los datos reales vendrán de la tabla 'activos')
+
+  // CÁLCULOS PRINCIPALES DEL MES
+  const { ingresosARS, gastosARS, ahorroDelMes } = useMemo(
+    () => calculateMonthlyTotals(ingresos, gastos, selectedMonth),
+    [ingresos, gastos, selectedMonth],
+  );
+  
+  // === CÁLCULO ASÍNCRONO DEL PATRIMONIO NETO ===
+  const runNetWorthCalculation = useCallback(async () => {
+    // Solo calcular si hay activos cargados
+    if (activos.length > 0) {
+      try {
+        const netWorth = await calculateNetWorth(activos);
+        setPatrimonioNeto(netWorth);
+      } catch (error) {
+        console.error("Error al calcular el Patrimonio Neto:", error);
+        // Si hay un error en la API, mostramos 0 para no bloquear la app
+        setPatrimonioNeto(0); 
+      }
+    } else {
+        setPatrimonioNeto(0);
+    }
+  }, [activos]);
+
+  // Ejecutar el cálculo del Patrimonio Neto cada vez que los activos cambian
+  useEffect(() => {
+      runNetWorthCalculation();
+  }, [runNetWorthCalculation]);
+
+  const loadFinanceData = useCallback(async () => {
+    setFinanceLoading(true);
+    setFinanceError(null);
+
+    try {
+      // ACTUALIZACIÓN: Llama a fetchActivos en lugar de fetchAhorros
+      const [ingresosResponse, gastosResponse, activosResponse] = await Promise.all([
+        fetchIngresos(),
+        fetchGastos(),
+        fetchActivos(),
+      ]);
+
+      setIngresos(Array.isArray(ingresosResponse) ? ingresosResponse : []);
+      setGastos(Array.isArray(gastosResponse) ? gastosResponse : []);
+      // ACTUALIZACIÓN: Almacena el resultado en 'activos'
+      setActivos(Array.isArray(activosResponse) ? activosResponse : []);
+      
+    } catch (error) {
+      console.error('Error al obtener los datos financieros', error);
+      setFinanceError(error?.message ?? 'No pudimos cargar los datos financieros.');
+      setIngresos([]);
+      setGastos([]);
+      setActivos([]); // Resetea activos
+    } finally {
+      setFinanceLoading(false);
+    }
+  }, []); // Dependencias vacías, solo se carga una vez al montar
+
+  useEffect(() => {
+    loadFinanceData();
+  }, [loadFinanceData]);
+  
   const handleMonthChange = useCallback(
     (value) => {
       const normalized = normalizePeriod(value);
@@ -40,9 +163,9 @@ export default function FinanzasApp() {
     [currentPeriod],
   );
 
-  // COMIENZA LÍNEA 48 del archivo anterior (MOVIDO ARRIBA)
   const monthOptions = useMemo(() => {
-    const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos, ahorros }));
+    // La lógica de periodos se mantiene usando solo ingresos y gastos (correcto)
+    const periodSet = new Set(collectPeriodsFromRecords({ ingresos, gastos }));
     const normalizedCurrent = normalizePeriod(currentPeriod);
 
     if (normalizedCurrent) {
@@ -56,81 +179,19 @@ export default function FinanzasApp() {
     }
 
     return sortPeriodsDesc(Array.from(periodSet));
-  }, [ingresos, gastos, ahorros, currentPeriod, selectedMonth]);
+  }, [ingresos, gastos, currentPeriod, selectedMonth]);
 
 
-  // COMIENZA LÍNEA 17 del archivo anterior (MOVIDO AQUÍ)
-  // Ahora commonProps puede acceder a handleMonthChange y monthOptions
   const commonProps = {
     selectedMonth,
     onMonthChange: handleMonthChange,
     monthOptions,
   };
 
-  // El resto del código de la aplicación puede seguir en su orden.
-  // ...
-  const inversionesData = useMemo(
-    () => [
-      { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.5, cambio: 2.15, cambioPorc: 0.75 },
-      { simbolo: 'YPF', nombre: 'YPF S.A.', precio: 1456.0, cambio: -23.5, cambioPorc: -1.59 },
-      { simbolo: 'ALUA', nombre: 'Aluar', precio: 89.25, cambio: 1.25, cambioPorc: 1.42 },
-      { simbolo: 'BTC', nombre: 'Bitcoin USD', precio: 67850.0, cambio: 1250.0, cambioPorc: 1.88 },
-    ],
-    [],
-  );
-
-  const loadFinanceData = useCallback(async () => {
-    setFinanceLoading(true);
-    setFinanceError(null);
-
-    try {
-      const [ingresosResponse, gastosResponse, ahorrosResponse] = await Promise.all([
-        fetchIngresos(),
-        fetchGastos(),
-        fetchAhorros(),
-      ]);
-
-      setIngresos(Array.isArray(ingresosResponse) ? ingresosResponse : []);
-      setGastos(Array.isArray(gastosResponse) ? gastosResponse : []);
-      setAhorros(Array.isArray(ahorrosResponse) ? ahorrosResponse : []);
-    } catch (error) {
-      console.error('Error al obtener los datos financieros', error);
-      setFinanceError(error?.message ?? 'No pudimos cargar los datos financieros.');
-      setIngresos([]);
-      setGastos([]);
-      setAhorros([]);
-    } finally {
-      setFinanceLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadFinanceData();
-  }, [loadFinanceData]);
-
-  // Las funciones de cálculo (useMemo) también pueden ir aquí,
-  // ya que dependen de los estados de datos (ingresos, gastos, ahorros)
-  // que ya están definidos y no causan problemas de inicialización.
-  const { ingresosARS, gastosARS, ahorroDelMes } = useMemo(
-    () => calculateMonthlyTotals(ingresos, gastos, selectedMonth),
-    [ingresos, gastos, selectedMonth],
-  );
-
-  const ahorroHistorico = useMemo(
-    () => sumAhorrosBeforePeriod(ahorros, selectedMonth),
-    [ahorros, selectedMonth],
-  );
-
-  const ahorroActual = ahorroHistorico + ahorroDelMes;
-  const metaAhorro = 0.2;
-  const ahorroObjetivo = ingresosARS * metaAhorro;
-
   const refreshFinanceData = useCallback(() => {
     loadFinanceData();
   }, [loadFinanceData]);
-  
-  // ... (El resto del componente)
-  
+
   const formatMoney = (amount) => {
     const numericAmount = Number(amount);
     const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
@@ -153,19 +214,27 @@ export default function FinanzasApp() {
   ];
 
   const renderContent = () => {
+    // NUEVA LÓGICA DE AHORRO/PATRIMONIO:
+    // El ahorro histórico ya no se calcula con sumAhorrosBeforePeriod, sino que se infiere
+    // del Patrimonio Neto total menos el ahorro del mes actual (es un HACK temporal).
+    const ahorroHistoricoContable = patrimonioNeto - ahorroDelMes; 
+    
+    // Métrica Objetivo (se mantiene basada en ingresos, pero ahora el ahorroActual es el Patrimonio Neto)
+    const metaAhorro = 0.2;
+    const ahorroObjetivo = ingresosARS * metaAhorro; 
+
     const sectionComponents = {
       dashboard: (
         <Dashboard
-          // Aquí se usan commonProps, pero también se pasan directamente
-          {...commonProps}  
           selectedMonth={selectedMonth}
           setSelectedMonth={handleMonthChange}
           monthOptions={monthOptions}
           totalIngresos={ingresosARS}
           totalGastos={gastosARS}
           ahorroDelMes={ahorroDelMes}
-          ahorroHistorico={ahorroHistorico}
-          ahorroActual={ahorroActual}
+          // ACTUALIZACIÓN: Pasa el Patrimonio Neto como métrica principal (el ahorro acumulado)
+          ahorroHistorico={ahorroHistoricoContable} 
+          ahorroActual={patrimonioNeto} // El Patrimonio Neto es el nuevo "ahorro"
           ahorroObjetivo={ahorroObjetivo}
           metaAhorro={metaAhorro}
           isLoading={financeLoading}
@@ -177,17 +246,30 @@ export default function FinanzasApp() {
       ),
       ingresos: <Ingresos {...commonProps} onDataChanged={refreshFinanceData} />,
       gastos: <Gastos {...commonProps} onDataChanged={refreshFinanceData} />,
-      inversiones: <Inversiones inversiones={inversionesData} formatMoney={formatMoney} />,
+      inversiones: (
+        // CAMBIO: Se mantiene tu componente, pero le pasamos los activos
+        // En la Tarea 1.3 haremos que este componente muestre la lista de activos
+        <Inversiones 
+          {...commonProps} 
+          onDataChanged={refreshFinanceData} 
+          // NUEVO PROP: Le pasamos la lista de activos y el Patrimonio Neto total
+          activos={activos}
+          patrimonioNeto={patrimonioNeto}
+        />
+      ),
+      // MANTENIDOS: Estas secciones se mantienen
       usuarios: (
         <div className="text-center py-12">
-          <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 text-lg">Módulo de Familia - En desarrollo</p>
+            <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">Módulo de Usuarios / Familia</p>
+            <p className="text-sm text-gray-500 mt-4">Próxima implementación para diferenciar ahorros por miembro.</p>
         </div>
       ),
       configuracion: (
         <div className="text-center py-12">
-          <Settings className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 text-lg">Configuración - En desarrollo</p>
+            <Settings className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">Configuración de la Aplicación</p>
+            <p className="text-sm text-gray-500 mt-4">Aquí se podrán definir metas, categorías y tipo de cambio por defecto.</p>
         </div>
       ),
     };
@@ -195,68 +277,82 @@ export default function FinanzasApp() {
     return sectionComponents[activeSection] ?? sectionComponents.dashboard;
   };
 
+  const handleSidebarToggle = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+  
+  const Icon = sidebarOpen ? X : Menu;
+
   return (
-    <div className="flex h-screen bg-gray-100 relative">
-      {/* Overlay para mobile cuando sidebar está abierto */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Sidebar Overlay para mobile */}
+      {sidebarOpen && isMobile && (
+        <div
+          className="fixed inset-0 z-20 bg-black opacity-50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
-        />
+        ></div>
       )}
 
       {/* Sidebar */}
       <div
-        className={`${
-          sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:w-16'
-        } lg:translate-x-0 bg-white shadow-lg transition-all duration-300 flex flex-col fixed lg:relative h-full z-30 overflow-hidden`}
+        className={`fixed inset-y-0 left-0 z-30 flex-shrink-0 bg-white shadow-xl transform ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } transition-transform duration-300 ease-in-out ${
+          isMobile ? 'w-64' : 'lg:relative lg:translate-x-0 lg:w-20 lg:hover:w-64 group'
+        }`}
+        onMouseEnter={() => {
+          if (!isMobile) setSidebarOpen(true);
+        }}
+        onMouseLeave={() => {
+          if (!isMobile) setSidebarOpen(false);
+        }}
       >
-        {/* Header */}
-        <div
-          className={`p-4 border-b border-gray-200 flex items-center ${
-            sidebarOpen ? 'justify-between' : 'justify-center'
-          }`}
-        >
-          {(sidebarOpen || isMobile) && (
-            <h1 className="text-xl font-bold text-gray-800">Finanzas Hogar</h1>
-          )}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-
-        {/* Menu */}
-        <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            return (
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Logo y toggle en mobile */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className={`text-xl font-bold text-blue-600 ${sidebarOpen ? '' : 'hidden lg:block'}`}>
+              <Home className="h-6 w-6" />
+            </div>
+            {isMobile && (
               <button
-                key={item.id}
-                onClick={() => {
-                  setActiveSection(item.id);
-                  if (isMobile) {
-                    setSidebarOpen(false);
-                  }
-                }}
-                className={`w-full flex items-center px-3 py-2 rounded-lg transition-colors ${
-                  sidebarOpen ? 'justify-start' : 'justify-center'
-                } ${
-                  activeSection === item.id
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
+                onClick={handleSidebarToggle}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-700"
               >
-                <Icon className="h-5 w-5 flex-shrink-0" />
-                {(sidebarOpen || isMobile) && (
-                  <span className="ml-3">{item.label}</span>
-                )}
+                <X className="h-5 w-5" />
               </button>
-            );
-          })}
-        </nav>
+            )}
+          </div>
+          
+          {/* Navegación */}
+          <nav className="flex-1 px-2 py-4 space-y-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveSection(item.id);
+                    if (isMobile) {
+                      setSidebarOpen(false);
+                    }
+                  }}
+                  className={`w-full flex items-center px-3 py-2 rounded-lg transition-colors ${
+                    sidebarOpen || isMobile ? 'justify-start' : 'justify-center'
+                  } ${
+                    activeSection === item.id
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {(sidebarOpen || isMobile) && (
+                    <span className="ml-3">{item.label}</span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -279,5 +375,3 @@ export default function FinanzasApp() {
     </div>
   );
 }
-
-// END of FinanzasApp.js
