@@ -22,9 +22,13 @@ import {
 
 // === FUNCIÓN DE CÁLCULO DE PATRIMONIO NETO (TAREA 2.2) ===
 const calculateNetWorth = async (activos) => {
-    const rate = getUSDExchangeRate();
-    let totalNetWorth = 0;
+    // 1. OBTENER TASA DE CAMBIO
+    const rateUSD_ARS = await getUSDExchangeRate(); // <--- DEBE USAR 'await'
+    const rateARS_USD = 1 / rateUSD_ARS;
+    
+    let totalNetWorthARS = 0;
     const pricingCache = {}; 
+    const detailedActivos = []; // Array para devolver los activos con su valorización
 
     const getPrice = async (ticker) => {
         if (!pricingCache[ticker]) {
@@ -37,35 +41,51 @@ const calculateNetWorth = async (activos) => {
         const quantity = Number(activo.cantidad) || 0;
         if (quantity <= 0) continue;
 
-        let valueInARS = 0;
+        let valorARS = 0;
+        let valorUSD = 0;
         const ticker = activo.ticker || activo.moneda;
+        const assetMoneda = activo.moneda.toUpperCase();
 
-        switch (activo.moneda) {
-            case 'ARS':
-                valueInARS = quantity;
-                break;
-            case 'USD':
-                valueInARS = quantity * rate;
-                break;
-            default: 
-                if (ticker) {
-                    const price = await getPrice(ticker); 
-                    
-                    if (activo.moneda === 'BTC' || activo.tipo_activo?.includes('CEDEAR')) {
-                        valueInARS = quantity * price * rate;
-                    } else {
-                        valueInARS = quantity * price;
-                    }
-                } else {
-                    valueInARS = 0;
-                }
-                break;
+        if (assetMoneda === 'ARS') {
+            valorARS = quantity;
+            valorUSD = quantity * rateARS_USD;
+
+        } else if (assetMoneda === 'USD') {
+            valorUSD = quantity;
+            valorARS = quantity * rateUSD_ARS;
+            
+        } else if (ticker) { // Activos que cotizan (Acciones, Cedears, etc.)
+            
+            const pricePerUnit = await getPrice(ticker);
+            const isPricedInUSD = ['BTC', 'ETH', 'TSLA', 'AAPL'].includes(ticker.toUpperCase()) || activo.tipo_activo?.includes('CEDEAR') || activo.tipo_activo?.includes('Crypto');
+
+            if (isPricedInUSD) {
+                // Activos valorados en USD (Cripto, CEDEARs)
+                valorUSD = quantity * pricePerUnit;
+                valorARS = valorUSD * rateUSD_ARS;
+            } else {
+                // Activos valorados en ARS (Acciones Locales)
+                valorARS = quantity * pricePerUnit;
+                valorUSD = valorARS * rateARS_USD;
+            }
         }
-
-        totalNetWorth += valueInARS;
+        
+        // Suma el valor en ARS al Patrimonio Neto total
+        totalNetWorthARS += valorARS;
+        
+        // Adjunta los valores calculados al activo para mostrar en la tabla
+        detailedActivos.push({
+            ...activo,
+            valor_ars: valorARS,
+            valor_usd: valorUSD,
+        });
     }
     
-    return totalNetWorth;
+    // Retorna el Patrimonio Neto total y la lista detallada de activos
+    return { 
+        totalNetWorth: totalNetWorthARS, 
+        detailedActivos: detailedActivos 
+    };
 };
 // ==========================================================
 
@@ -97,8 +117,9 @@ export default function FinanzasApp() {
   const runNetWorthCalculation = useCallback(async () => {
     if (activos.length > 0) {
       try {
-        const netWorth = await calculateNetWorth(activos);
-        setPatrimonioNeto(netWorth);
+        const result = await calculateNetWorth(activos); // <- AQUI SE CAMBIA
+        setPatrimonioNeto(result.totalNetWorth);
+        setActivos(result.detailedActivos);
       } catch (error) {
         console.error("Error al calcular el Patrimonio Neto:", error);
         setPatrimonioNeto(0); 
