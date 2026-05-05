@@ -173,6 +173,7 @@ export default function FinanzasApp() {
           formatMoney={formatMoney}
           onRefresh={refreshFinanceData}
           gastos={gastos}
+          ingresos={ingresos}
         />
       ),
       ingresos: <Ingresos {...commonProps} onDataChanged={refreshFinanceData} />,

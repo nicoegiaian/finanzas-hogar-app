@@ -4,156 +4,14 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowUp, ArrowDown, PieChart } from 'lucide-react';
 
 import {
-  calculateGastoARS,
   formatPeriodLabel,
   normalizePeriod,
   sortPeriodsDesc,
 } from '../../lib/financeUtils';
-import GastosBreakdownChart from './GastosBreakdownChart';
 
-const USER_FIELD_CANDIDATES = ['usuario', 'user', 'miembro', 'responsable', 'integrante'];
-const TYPE_FIELD_CANDIDATES = [
-  'tipodemovimiento',
-  'tipomovimiento',
-  'tipo_movimiento',
-  'tipomov',
-  'tipo',
-  'categoria',
-];
+import IngresosGastosChart from './IngresosGastosChart';
 
-const DEFAULT_USER_LABEL = 'Sin usuario';
-const DEFAULT_TYPE_LABEL = 'Sin tipo';
 
-const buildNormalizedFieldMap = (record) => {
-  const map = new Map();
-
-  if (!record || typeof record !== 'object') {
-    return map;
-  }
-
-  Object.entries(record).forEach(([key, value]) => {
-    if (typeof key === 'string') {
-      map.set(key.toLowerCase(), value);
-    }
-  });
-
-  return map;
-};
-
-const getValueFromMap = (map, candidates) => {
-  if (!(map instanceof Map) || !Array.isArray(candidates)) {
-    return null;
-  }
-
-  for (const candidate of candidates) {
-    const normalizedCandidate = typeof candidate === 'string' ? candidate.toLowerCase() : '';
-
-    if (!normalizedCandidate) {
-      continue;
-    }
-
-    if (map.has(normalizedCandidate)) {
-      const value = map.get(normalizedCandidate);
-
-      if (value !== null && value !== undefined) {
-        return value;
-      }
-    }
-  }
-
-  return null;
-};
-
-const normalizeCategoryLabel = (value, fallbackLabel) => {
-  if (value === null || value === undefined) {
-    return fallbackLabel;
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed !== '' ? trimmed : fallbackLabel;
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value.toString();
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'Sí' : 'No';
-  }
-
-  try {
-    const stringValue = String(value);
-    const trimmed = stringValue.trim();
-    return trimmed !== '' ? trimmed : fallbackLabel;
-  } catch (error) {
-    return fallbackLabel;
-  }
-};
-
-const buildMonthlyGastosBreakdown = (gastos = []) => {
-  const monthMap = new Map();
-
-  if (!Array.isArray(gastos)) {
-    return [];
-  }
-
-  gastos.forEach((gasto) => {
-    if (!gasto || typeof gasto !== 'object') {
-      return;
-    }
-
-    const period = normalizePeriod(gasto?.fecha ?? gasto?.periodo ?? gasto?.mes);
-
-    if (!period) {
-      return;
-    }
-
-    const amount = Number(calculateGastoARS(gasto));
-
-    if (!Number.isFinite(amount) || amount === 0) {
-      return;
-    }
-
-    const safeAmount = Math.abs(amount);
-
-    if (!monthMap.has(period)) {
-      monthMap.set(period, {
-        period,
-        label: formatPeriodLabel(period),
-        total: 0,
-        byUsuario: new Map(),
-        byTipo: new Map(),
-      });
-    }
-
-    const monthEntry = monthMap.get(period);
-    monthEntry.total += safeAmount;
-
-    const fieldMap = buildNormalizedFieldMap(gasto);
-    const rawUser = getValueFromMap(fieldMap, USER_FIELD_CANDIDATES);
-    const rawType = getValueFromMap(fieldMap, TYPE_FIELD_CANDIDATES);
-    const userLabel = normalizeCategoryLabel(rawUser, DEFAULT_USER_LABEL);
-    const typeLabel = normalizeCategoryLabel(rawType, DEFAULT_TYPE_LABEL);
-
-    monthEntry.byUsuario.set(userLabel, (monthEntry.byUsuario.get(userLabel) ?? 0) + safeAmount);
-    monthEntry.byTipo.set(typeLabel, (monthEntry.byTipo.get(typeLabel) ?? 0) + safeAmount);
-  });
-
-  const sortedPeriods = sortPeriodsDesc([...monthMap.keys()]).reverse();
-
-  return sortedPeriods.map((period) => {
-    const entry = monthMap.get(period);
-
-    return {
-      period,
-      label: entry?.label ?? formatPeriodLabel(period),
-      total: entry?.total ?? 0,
-      byUsuario: Object.fromEntries(entry?.byUsuario ?? []),
-      byTipo: Object.fromEntries(entry?.byTipo ?? []),
-    };
-  });
-};
 
 export default function Dashboard({
   selectedMonth,
@@ -171,6 +29,7 @@ export default function Dashboard({
   error = null,
   onRefresh,
   gastos = [],
+  ingresos = [],
 }) {
   const renderAmount = (value) => {
     if (isLoading) {
@@ -185,11 +44,7 @@ export default function Dashboard({
     new Set([...(Array.isArray(monthOptions) ? monthOptions : []), selectedMonth].filter(Boolean)),
   );
   const isMeetingGoal = ahorroActual >= ahorroObjetivo;
-  const [gastosBreakdownMode, setGastosBreakdownMode] = useState('usuario');
-  const gastosBreakdownData = useMemo(
-    () => buildMonthlyGastosBreakdown(gastos),
-    [gastos],
-  );
+
 
   return (
     <div className="space-y-6">
@@ -281,10 +136,9 @@ export default function Dashboard({
         </div>
       </div>
 
-      <GastosBreakdownChart
-        data={gastosBreakdownData}
-        mode={gastosBreakdownMode}
-        onModeChange={setGastosBreakdownMode}
+      <IngresosGastosChart
+        ingresos={ingresos}
+        gastos={gastos}
         formatMoney={formatMoney}
         isLoading={isLoading}
       />
