@@ -32,9 +32,8 @@ const getDolarBlue = async () => {
 
 const getCAFCIPrice = async (cafciId) => {
   const [fondoId, claseId] = cafciId.split(';');
-  const res = await fetch(
-    `https://api.cafci.org.ar/fondo/${fondoId}/clase/${claseId}/ficha`,
-  );
+  // Usamos el proxy interno de Next.js para evitar CORS con api.cafci.org.ar
+  const res = await fetch(`/api/cafci?fondo=${fondoId}&clase=${claseId}`);
   if (!res.ok) throw new Error(`CAFCI error para fondo ${cafciId}`);
   const json = await res.json();
   const diaria = json?.data?.info?.diaria?.actual;
@@ -333,6 +332,17 @@ export default function Inversiones({ formatMoney }) {
         cantidad: parseFloat(formData.cantidad),
         notas: formData.notas || null,
       });
+
+      // Auto-guardar precio implícito como precio de referencia.
+      // Para instrumentos manuales es el precio vigente.
+      // Para FCIs es un fallback si CAFCI no está disponible.
+      if (precioImplicito && parseFloat(precioImplicito) > 0) {
+        await upsertPrecioManual(
+          formData.instrumento_id,
+          parseFloat(precioImplicito),
+        );
+      }
+
       setFormData({
         instrumento_id: '',
         fecha: new Date().toISOString().split('T')[0],
