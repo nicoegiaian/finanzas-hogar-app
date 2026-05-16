@@ -69,16 +69,7 @@ export default function FinanzasApp() {
 
   // El resto del código de la aplicación puede seguir en su orden.
   // ...
-  const inversionesData = useMemo(
-    () => [
-      { simbolo: 'GGAL', nombre: 'Grupo Galicia', precio: 287.5, cambio: 2.15, cambioPorc: 0.75 },
-      { simbolo: 'YPF', nombre: 'YPF S.A.', precio: 1456.0, cambio: -23.5, cambioPorc: -1.59 },
-      { simbolo: 'ALUA', nombre: 'Aluar', precio: 89.25, cambio: 1.25, cambioPorc: 1.42 },
-      { simbolo: 'BTC', nombre: 'Bitcoin USD', precio: 67850.0, cambio: 1250.0, cambioPorc: 1.88 },
-    ],
-    [],
-  );
-
+ 
   const loadFinanceData = useCallback(async () => {
     setFinanceLoading(true);
     setFinanceError(null);
@@ -178,7 +169,7 @@ export default function FinanzasApp() {
       ),
       ingresos: <Ingresos {...commonProps} onDataChanged={refreshFinanceData} />,
       gastos: <Gastos {...commonProps} onDataChanged={refreshFinanceData} />,
-      inversiones: <Inversiones inversiones={inversionesData} formatMoney={formatMoney} />,
+      inversiones: <Inversiones formatMoney={formatMoney} />,
       usuarios: (
         <div className="text-center py-12">
           <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
