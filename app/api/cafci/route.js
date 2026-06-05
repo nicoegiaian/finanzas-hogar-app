@@ -1,6 +1,6 @@
-export const dynamic = 'force-dynamic';
-
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -18,8 +18,7 @@ export async function GET(request) {
     const cafciUrl = `https://api.cafci.org.ar/fondo/${fondo}/clase/${clase}/ficha`;
     const response = await fetch(cafciUrl, {
       headers: { Accept: 'application/json' },
-      // Revalida cada hora - el VCP se publica una vez por día hábil
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     });
 
     if (!response.ok) {
