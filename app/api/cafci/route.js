@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-// Convierte formato argentino "233.669,955" → 233669.955
+// Convierte formato argentino "116.803,688" → 116803.688
 function parseArgNumber(str) {
   return parseFloat(str.trim().replace(/\./g, '').replace(',', '.'));
 }
@@ -32,18 +32,30 @@ export async function GET(request) {
 
     const html = await upstream.text();
 
-    // Extraer VCP: busca "Valor Cuotaparte</td>" y captura el número en el <td> siguiente
-    const vcpMatch = html.match(/Valor Cuotaparte<\/td>\s*<td>\s*([\d.,]+)\s*<\/td>/);
-    if (!vcpMatch) {
-      return Response.json({ error: 'No se encontró el Valor Cuotaparte en el HTML' }, { status: 502 });
-    }
-    const vcp = parseArgNumber(vcpMatch[1]);
-
-    // Extraer fecha: busca "información al DD/MM/YYYY"
+    // Extraer fecha
     const fechaMatch = html.match(/información al (\d{2}\/\d{2}\/\d{4})/);
     const fecha = fechaMatch ? fechaMatch[1] : null;
 
-    return Response.json({ vcp, fecha });
+    // Caso 1: "Valor por mil" → dividir por 1000
+    const porMilMatch = html.match(/[Vv]alor por mil[^<]*<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>/);
+    if (porMilMatch) {
+      const vcp = parseArgNumber(porMilMatch[1]) / 1000;
+      return Response.json({ vcp, fecha, fuente: 'por_mil' });
+    }
+
+    // Caso 2: "Valor Cuotaparte" estándar
+    const vcpMatch = html.match(/Valor Cuotaparte<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>/);
+    if (vcpMatch) {
+      const vcp = parseArgNumber(vcpMatch[1]);
+      return Response.json({ vcp, fecha, fuente: 'cuotaparte' });
+    }
+
+    // No encontrado: devolver diagnóstico
+    const idx = html.toLowerCase().indexOf('valor');
+    return Response.json({
+      error: 'No se encontró el VCP en el HTML',
+      html_around_valor: idx !== -1 ? html.slice(Math.max(0, idx - 50), idx + 300) : 'No encontrado',
+    }, { status: 502 });
 
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
