@@ -10,33 +10,33 @@ export async function GET(request) {
       return Response.json({ error: 'fondo y clase son requeridos' }, { status: 400 });
     }
 
-    const cafciUrl = `https://api.cafci.org.ar/fondo/${fondo}/clase/${clase}/ficha`;
+    const pageUrl = `https://estadisticas.cafci.org.ar/fondos/${fondo}?clase=${clase}`;
 
-    const upstream = await fetch(cafciUrl, {
+    const upstream = await fetch(pageUrl, {
       cache: 'no-store',
       headers: {
-        'Accept': 'application/json, text/plain, */*',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'es-AR,es;q=0.9',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://estadisticas.cafci.org.ar/',
-        'Origin': 'https://estadisticas.cafci.org.ar',
       },
     });
 
-    const contentType = upstream.headers.get('content-type') ?? '';
-
-    // Si CAFCI no devuelve JSON, retornar el body crudo para diagnóstico
-    if (!contentType.includes('json')) {
-      const rawBody = await upstream.text();
+    if (!upstream.ok) {
       return Response.json({
-        error: `CAFCI respondió ${upstream.status} con content-type: ${contentType}`,
+        error: `estadisticas.cafci.org.ar respondió ${upstream.status}`,
         cafci_status: upstream.status,
-        body_preview: rawBody.slice(0, 500),
       }, { status: 502 });
     }
 
-    const data = await upstream.json();
-    return Response.json(data, { status: upstream.status });
+    const html = await upstream.text();
+
+    // Para diagnóstico: devolver los primeros 3000 chars del HTML
+    // Una vez que confirmemos la estructura, parseamos el VCP
+    return Response.json({
+      status: upstream.status,
+      html_length: html.length,
+      html_preview: html.slice(0, 3000),
+    });
 
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
