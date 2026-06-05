@@ -34,13 +34,14 @@ const getDolarBlue = async () => {
 
 const getCAFCIPrice = async (cafciId) => {
   const [fondoId, claseId] = cafciId.split(';');
+  // Proxy Next.js → estadisticas.cafci.org.ar (evita CORS y auth)
   const res = await fetch(`/api/cafci?fondo=${fondoId}&clase=${claseId}`);
   if (!res.ok) throw new Error(`CAFCI error para fondo ${cafciId}`);
   const json = await res.json();
-  const diaria = json?.data?.info?.diaria?.actual;
+  // El proxy devuelve { vcp: number, fecha: string } directamente
   return {
-    vcp: Number(diaria?.vcpUnitario ?? 0),
-    fecha: diaria?.fecha ?? null,
+    vcp: Number(json.vcp ?? 0),
+    fecha: json.fecha ?? null,
   };
 };
 
