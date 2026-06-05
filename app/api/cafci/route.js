@@ -36,18 +36,12 @@ export async function GET(request) {
     const fechaMatch = html.match(/información al (\d{2}\/\d{2}\/\d{4})/);
     const fecha = fechaMatch ? fechaMatch[1] : null;
 
-    // Caso 1: "Valor por mil" → dividir por 1000
-    const porMilMatch = html.match(/[Vv]alor por mil[^<]*<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>/);
-    if (porMilMatch) {
-      const vcp = parseArgNumber(porMilMatch[1]) / 1000;
-      return Response.json({ vcp, fecha, fuente: 'por_mil' });
-    }
-
-    // Caso 2: "Valor Cuotaparte" estándar
+    // CAFCI siempre publica el VCP × 1000 (valor por mil cuotapartes)
+    // → dividir siempre por 1000 para obtener el VCP real por cuotaparte
     const vcpMatch = html.match(/Valor Cuotaparte<\/td>\s*<td[^>]*>\s*([\d.,]+)\s*<\/td>/);
     if (vcpMatch) {
-      const vcp = parseArgNumber(vcpMatch[1]);
-      return Response.json({ vcp, fecha, fuente: 'cuotaparte' });
+      const vcp = parseArgNumber(vcpMatch[1]) / 1000;
+      return Response.json({ vcp, fecha });
     }
 
     // No encontrado: devolver diagnóstico
