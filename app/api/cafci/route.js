@@ -1,5 +1,10 @@
 export const dynamic = 'force-dynamic';
 
+// Convierte formato argentino "233.669,955" → 233669.955
+function parseArgNumber(str) {
+  return parseFloat(str.trim().replace(/\./g, '').replace(',', '.'));
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -27,25 +32,18 @@ export async function GET(request) {
 
     const html = await upstream.text();
 
-    // Buscar fragmentos alrededor de palabras clave relevantes
-    const keywords = ['cuotaparte', 'VCP', 'vcp', 'valor', 'Valor cuota'];
-    const excerpts = {};
-    for (const kw of keywords) {
-      const idx = html.toLowerCase().indexOf(kw.toLowerCase());
-      if (idx !== -1) {
-        excerpts[kw] = html.slice(Math.max(0, idx - 100), idx + 300);
-      }
+    // Extraer VCP: busca "Valor Cuotaparte</td>" y captura el número en el <td> siguiente
+    const vcpMatch = html.match(/Valor Cuotaparte<\/td>\s*<td>\s*([\d.,]+)\s*<\/td>/);
+    if (!vcpMatch) {
+      return Response.json({ error: 'No se encontró el Valor Cuotaparte en el HTML' }, { status: 502 });
     }
+    const vcp = parseArgNumber(vcpMatch[1]);
 
-    // También devolver el body completo desde la mitad
-    const bodyStart = html.indexOf('<body');
-    const bodySection = bodyStart !== -1 ? html.slice(bodyStart, bodyStart + 5000) : html.slice(3000, 8000);
+    // Extraer fecha: busca "información al DD/MM/YYYY"
+    const fechaMatch = html.match(/información al (\d{2}\/\d{2}\/\d{4})/);
+    const fecha = fechaMatch ? fechaMatch[1] : null;
 
-    return Response.json({
-      html_length: html.length,
-      keywords_found: excerpts,
-      body_section: bodySection,
-    });
+    return Response.json({ vcp, fecha });
 
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
