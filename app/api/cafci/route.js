@@ -1,39 +1,21 @@
-import { NextResponse } from 'next/server';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const fondo = searchParams.get('fondo');
-  const clase = searchParams.get('clase');
-
-  if (!fondo || !clase) {
-    return NextResponse.json(
-      { error: 'Parámetros fondo y clase son requeridos' },
-      { status: 400 },
-    );
-  }
-
   try {
-    const cafciUrl = `https://api.cafci.org.ar/fondo/${fondo}/clase/${clase}/ficha`;
-    const response = await fetch(cafciUrl, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    });
+    const { searchParams } = new URL(request.url);
+    const fondo = searchParams.get('fondo');
+    const clase = searchParams.get('clase');
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `CAFCI respondió ${response.status}` },
-        { status: response.status },
-      );
+    if (!fondo || !clase) {
+      return Response.json({ error: 'fondo y clase son requeridos' }, { status: 400 });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error?.message ?? 'Error al consultar CAFCI' },
-      { status: 500 },
-    );
+    const cafciUrl = `https://api.cafci.org.ar/fondo/${fondo}/clase/${clase}/ficha`;
+    const upstream = await fetch(cafciUrl, { cache: 'no-store' });
+    const data = await upstream.json();
+
+    return Response.json(data, { status: upstream.status });
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 });
   }
 }
