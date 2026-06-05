@@ -178,21 +178,43 @@ export default function Inversiones({ formatMoney }) {
   // ─── Data loading ─────────────────────────────────────────────────────────
 
   const loadExternalPrices = useCallback(async (insts) => {
+    // Dólar blue
     try {
       const blue = await getDolarBlue();
       setDolarBlue(blue);
     } catch { /* opcional */ }
 
+    // Precios CAFCI
     const fciInsts = insts.filter((i) => i.fuente_precio === 'cafci' && i.cafci_fondo_id);
     const settled = await Promise.allSettled(
       fciInsts.map(async (inst) => {
         const price = await getCAFCIPrice(inst.cafci_fondo_id);
-        return { id: inst.id, price };
+        return { id: inst.id, nombre: inst.ticker, price };
       }),
     );
+
     const newPrices = {};
-    settled.forEach((r) => { if (r.status === 'fulfilled') newPrices[r.value.id] = r.value.price; });
+    const ok = [];
+    const failed = [];
+
+    for (const r of settled) {
+      if (r.status === 'fulfilled') {
+        newPrices[r.value.id] = r.value.price;
+        ok.push(r.value.nombre);
+        // Persistir en Supabase como fallback para recargas futuras
+        try {
+          await upsertPrecioManual(r.value.id, r.value.price.vcp);
+        } catch { /* no crítico */ }
+      } else {
+        const inst = fciInsts[settled.indexOf(r)];
+        failed.push(inst?.ticker ?? 'desconocido');
+      }
+    }
+
     setCafciPrices(newPrices);
+
+    // Retornar resumen para el toast
+    return { ok, failed };
   }, []);
 
   const loadSupabaseData = useCallback(async () => {
@@ -226,10 +248,20 @@ export default function Inversiones({ formatMoney }) {
   const handleRefreshPrices = async () => {
     setRefreshingPrices(true);
     try {
-      await loadExternalPrices(instrumentos);
-      showToast('Precios actualizados');
-    } catch { showToast('Error al actualizar precios'); }
-    finally { setRefreshingPrices(false); }
+      const { ok, failed } = await loadExternalPrices(instrumentos) ?? { ok: [], failed: [] };
+      const dolarMsg = dolarBlue ? ` · Blue: ${fmtARS(dolarBlue.venta)}` : '';
+      if (failed.length === 0) {
+        showToast(`${ok.length}/${ok.length} precios actualizados ✓${dolarMsg}`);
+      } else {
+        showToast(`${ok.length}/${ok.length + failed.length} actualizados · Sin datos: ${failed.join(', ')}`);
+      }
+      // Recargar precios manuales desde Supabase (se persistieron los CAFCI)
+      await loadSupabaseData();
+    } catch {
+      showToast('Error al actualizar precios');
+    } finally {
+      setRefreshingPrices(false);
+    }
   };
 
   // ─── Portfolio ────────────────────────────────────────────────────────────
