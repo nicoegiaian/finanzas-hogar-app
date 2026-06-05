@@ -22,20 +22,29 @@ export async function GET(request) {
     });
 
     if (!upstream.ok) {
-      return Response.json({
-        error: `estadisticas.cafci.org.ar respondió ${upstream.status}`,
-        cafci_status: upstream.status,
-      }, { status: 502 });
+      return Response.json({ error: `CAFCI respondió ${upstream.status}` }, { status: 502 });
     }
 
     const html = await upstream.text();
 
-    // Para diagnóstico: devolver los primeros 3000 chars del HTML
-    // Una vez que confirmemos la estructura, parseamos el VCP
+    // Buscar fragmentos alrededor de palabras clave relevantes
+    const keywords = ['cuotaparte', 'VCP', 'vcp', 'valor', 'Valor cuota'];
+    const excerpts = {};
+    for (const kw of keywords) {
+      const idx = html.toLowerCase().indexOf(kw.toLowerCase());
+      if (idx !== -1) {
+        excerpts[kw] = html.slice(Math.max(0, idx - 100), idx + 300);
+      }
+    }
+
+    // También devolver el body completo desde la mitad
+    const bodyStart = html.indexOf('<body');
+    const bodySection = bodyStart !== -1 ? html.slice(bodyStart, bodyStart + 5000) : html.slice(3000, 8000);
+
     return Response.json({
-      status: upstream.status,
       html_length: html.length,
-      html_preview: html.slice(0, 3000),
+      keywords_found: excerpts,
+      body_section: bodySection,
     });
 
   } catch (err) {
